@@ -1,0 +1,33 @@
+model = None
+optimizer = None
+loss = None
+observables = None
+EPOCHS = None
+trainloader = None
+testloader = None
+tensorboard_path = None
+device = None
+DEBUG = None
+criterion = None
+metrics = None
+MODEL_NAME = None
+MODEL_ARGS = None
+transform_image_train = None
+transform_image_test = None
+res = None
+preprocessing = None
+TRAIN_TEST_SPLIT = None
+BATCH_SIZE = None
+resolution = None
+PIXEL_SPACING = None
+cli_args = None
+args = None
+OPTIMIZER_ARGS = None
+defreezer = None
+temporary_path = None
+
+mean_norm = None
+std_norm = None
+
+weights_path = None
+evaluate_mode = None
