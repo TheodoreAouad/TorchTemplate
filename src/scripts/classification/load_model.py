@@ -65,7 +65,7 @@ def main():
             criterion=cfg.criterion,
             metrics=cfg.metrics, 
             save_weights_path=cfg.tensorboard_path if not cfg.evaluate_mode else None,
-            to_save_on='f1score',
+            to_save_on='loss',
             ),
         o.MemoryChecker() if cfg.device == torch.device('cuda') else o.Observables(),
         # o.ConfusionMatrix(
@@ -78,8 +78,8 @@ def main():
         # o.GradientsLossInputs(background=-1, save_figure_path=cfg.tensorboard_path, period=10),
         o.SaliencyMaps(
             save_figure_path=cfg.tensorboard_path, 
-            periods={'train_on_batch': 100, 'val_on_batch': 1, 'val_on_epoch': 5, 'train_on_epoch': 5,},
-            props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .1, 'train_on_epoch': .03},
+            periods={'train_on_batch': 1000, 'val_on_batch': 1, 'val_on_epoch': 5, 'train_on_epoch': 5,},
+            props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .005, 'train_on_epoch': .03},
             do_tasks={
                 'train_on_batch': True, 
                 'val_on_batch': True if cfg.evaluate_mode else False, 
@@ -87,15 +87,13 @@ def main():
                 'val_on_epoch': True
                 },
             # threshold=cfg.threshold,
-            background_to_hide=cfg.background,
         ),
         o.GradCAM(
             model=cfg.model,
             batch_size=cfg.BATCH_SIZE,
             save_figure_path=cfg.tensorboard_path,
-            background_to_hide=cfg.background,
-            periods={'train_on_batch': 100, 'val_on_batch': 1, 'val_on_epoch': 3, 'train_on_epoch': 5,},
-            props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .1, 'train_on_epoch': .03},
+            periods={'train_on_batch': 1000, 'val_on_batch': 1, 'val_on_epoch': 3, 'train_on_epoch': 5,},
+            props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .005, 'train_on_epoch': .03},
             do_tasks={
                 'train_on_batch': True, 
                 'val_on_batch': True if cfg.evaluate_mode else False, 

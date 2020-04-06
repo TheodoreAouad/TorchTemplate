@@ -806,6 +806,8 @@ class SaliencyMaps(Observables):
 
     def show(self):
         super().show()
+        for key in self.ticks.keys():
+            print('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
 
 
     def _save_on_ticks(self, savepath, key):
@@ -813,7 +815,6 @@ class SaliencyMaps(Observables):
             return
         
         if self.ticks[key] % self.periods[key] != 0:
-            print('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
             self.ticks[key] += 1
             return
 
@@ -831,9 +832,10 @@ class SaliencyMaps(Observables):
 
         for idx in tqdm(idexs):
             img = self.cur_inputs[idx] + 0
-            img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
+            if self.bg_to_hide is not None:
+                img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
             grad = self.cur_grads[idx]
-            fig, axs = plt.subplots(3, img.shape[0], figsize=(img.shape[0]*5, 3*5))
+            fig, axs = plt.subplots(3, img.shape[0], figsize=(img.shape[0]*5, 3*5), squeeze=False)
             for chan in range(img.shape[0]):
                 axs[0, chan].imshow(img[chan], cmap='gray')
                 axs[0, chan].set_title('Input')
@@ -1010,10 +1012,11 @@ class GradCAM(Observables):
 
         for idx in tqdm(idexs):
             img = self.cur_inputs[idx] + 0
-            img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
+            if self.bg_to_hide is not None:
+                img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
             gradcam = F.upsample(self.gradcam[idx][None, ...], img.shape[-1], mode='bicubic')
             guided_bp = self.guided_bp[idx]
-            fig, axs = plt.subplots(5, img.shape[0], figsize=(img.shape[0]*5, 5*5))
+            fig, axs = plt.subplots(5, img.shape[0], figsize=(img.shape[0]*5, 5*5), squeeze=False)
             for chan in range(img.shape[0]):
                 axs[0, chan].imshow(img[chan], cmap='gray')
                 axs[0, chan].set_title('Input')
@@ -1091,14 +1094,14 @@ class GradCAM(Observables):
 
     def show(self):
         super().show()
-
+        for key in self.ticks.keys():
+            print('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
 
     def _save_on_ticks(self, savepath, key):
         if self.save_figure_path == None:
             return
         
         if self.ticks[key] % self.periods[key] != 0:
-            print('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
             self.ticks[key] += 1
             return
 
