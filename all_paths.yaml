@@ -1,0 +1,11 @@
+# Datasets
+
+
+# Classification 
+
+classification_args: "./src/scripts/classification/args.yaml"
+
+tensorboard_classification: "./tensorboards/classification"
+manager_classification: "./tensorboards/classification"
+
+results_classification: "./results/classification/results.pkl"

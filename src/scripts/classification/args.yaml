@@ -1,0 +1,53 @@
+SPECIFICITY:
+  ['']
+
+##############
+#### DATA ####
+##############
+
+# Data Preprocessing
+
+
+###############
+#### MODEL ####
+###############
+
+# Model Creation
+MODEL_NAME:
+  ['resnet',]
+
+MODEL_ARGS:
+  [
+    {
+      'layers': 'resnet18',
+      # 'layers': [1, 1, 1],
+      'planes': [64, 128, 256, 512],
+      'in_channels': 1,
+      'num_classes': 10,
+      'pretrained': False,
+      'progress': True,
+      'do_activation': False,
+    },
+  ]
+
+# Model Training
+
+ID_TRIALS: ['']
+NORMALIZE: [False]
+DATA_AUGMENTATION: [False]
+FREEZE_FEATURES: [False]
+EPOCHS: [30]
+BATCH_SIZE: [30]
+TRAIN_TEST_SPLIT: [.8]
+OPTIMIZER:
+  [
+    {
+      'name': 'adam',
+      'args': {
+        'lr': 1e-2,
+        'betas': [0.9,0.999],
+        'eps': 1e-08,
+        'weight_decay': 1e-4
+      }
+    }
+  ]
