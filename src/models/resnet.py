@@ -2,11 +2,10 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.models.resnet as resnet
 from torchvision.models.utils import load_state_dict_from_url
 
-from src.models.custom_layers import Flatten
+from src.models.custom_layers import MaskedConv2d, Flatten, MaskedBatchNorm2d
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -25,6 +24,7 @@ model_layers = {
     'resnet10': [1, 1, 1, 1],
 }
 
+
 class ResNet(resnet.ResNet):
     r""" ResNet model from torch, modified to have more flexibility with layers. From
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
@@ -34,8 +34,8 @@ class ResNet(resnet.ResNet):
     """
     def __init__(
         self,
-        num_classes=1000,
-        layers=[2,2,2,2],
+        n_classes=1000,
+        layers=[2, 2, 2, 2],
         planes=[64, 128, 256, 512],
         zero_init_residual=False,
         groups=1,
@@ -56,7 +56,7 @@ class ResNet(resnet.ResNet):
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
             # the 2x2 stride with a dilated convolution instead
-            
+
             replace_stride_with_dilation = [False] * (len(layers) - 1)
 
         self.groups = groups
@@ -72,13 +72,13 @@ class ResNet(resnet.ResNet):
             setattr(
                 self,
                 'layer{}'.format(layer_idx+1),
-                self._make_layer(block, planes[layer_idx], layers[layer_idx], stride=2, 
+                self._make_layer(block, planes[layer_idx], layers[layer_idx], stride=2,
                                 dilate=replace_stride_with_dilation[layer_idx-1])
             )
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.flatten = Flatten()
-        self.fc = nn.Linear(self.inplanes * block.expansion, num_classes)
+        self.fc = nn.Linear(self.inplanes * block.expansion, n_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -99,7 +99,7 @@ class ResNet(resnet.ResNet):
 
 
     def forward(self, x):
-    
+
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -108,21 +108,20 @@ class ResNet(resnet.ResNet):
         for i in range(len(self.layers)):
             x = getattr(self, 'layer{}'.format(i+1))(x)
 
+
         x = self.avgpool(x)
         # x = torch.flatten(x, 1)
         x = self.flatten(x)
         x = self.fc(x)
         return x
 
-    def to(self, device):
-        super().to(device)
-        for child in self.children():
-            child.to(device)
-        return self
-
+    @property
+    def device(self):
+        for p in self.parameters():
+            return p.device
 
     def _get_resolution(self, input_res, filter_size, stride, padding):
-        return int( (input_res - filter_size + 2*padding) / stride) + 1
+        return int((input_res - filter_size + 2*padding) / stride) + 1
 
 
 class ResNet_N(ResNet):
@@ -130,11 +129,14 @@ class ResNet_N(ResNet):
     def __init__(
         self,
         in_channels=1,
-        num_classes=1,
+        n_classes=1,
+        use_mask=True,
+        bg_in=-1,
+        bg_transit=0,
         pretrained=False,
         progress=True,
         layers='resnet18',
-        planes=[64, 128, 256, 512], 
+        planes=[64, 128, 256, 512],
         do_activation=False,
         **kwargs
     ):
@@ -149,7 +151,9 @@ class ResNet_N(ResNet):
             **kwargs
         )
 
-        if pretrained:
+        self.bg_in = bg_in
+
+        if pretrained and type(layers) == str:
             state_dict = load_state_dict_from_url(model_urls[model_name],
                                                 progress=progress)
             self.load_state_dict(state_dict)
@@ -157,13 +161,22 @@ class ResNet_N(ResNet):
         if in_channels != 3:
             self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3,
                             bias=False)
-        
+
+        if use_mask:
+            self._replace_layers(
+                bg_transit=bg_transit,
+                transform_conv=False,
+                transform_bn=True,
+                transform_relu=True
+            )
+            self.conv1.bg_in = self.bg_in
+
         # self.bn1 = self._norm_layer(64)
 
-        self.fc = nn.Linear(self.inplanes * resnet.BasicBlock.expansion, num_classes)
+        self.fc = nn.Linear(self.inplanes * resnet.BasicBlock.expansion, n_classes)
 
         self.do_activation = do_activation
-        self.final_activation = torch.sigmoid if num_classes == 1 else lambda x: torch.softmax(x, dim=-1)
+        self.final_activation = torch.sigmoid if n_classes == 1 else lambda x: torch.softmax(x, dim=-1)
 
     def forward(self, x, do_activation=None):
         if do_activation is None:
@@ -175,4 +188,31 @@ class ResNet_N(ResNet):
             return self.final_activation(x)
         return x
 
+    def _replace_layers(self, bg_transit, transform_conv=True, transform_bn=True, transform_relu=True):
+        for name, layer in self.named_modules():
+            if transform_conv and isinstance(layer, nn.Conv2d):
+                self._replace_layer(
+                    layer, name, MaskedConv2d,
+                    args={'conv2d': layer, "bg_in": bg_transit, "bg_out": bg_transit}
+                )
+            if transform_bn and isinstance(layer, nn.BatchNorm2d):
+                self._replace_layer(
+                    layer, name, MaskedBatchNorm2d,
+                    args={
+                        'num_features': layer.num_features, 'bg_in': bg_transit, 'bg_out': bg_transit,
+                        'eps': layer.eps, 'momentum': layer.momentum,
+                        'affine': layer.affine, 'track_running_stats': layer.track_running_stats,
+                    }
+                )
+            if transform_relu and isinstance(layer, nn.ReLU):
+                self._replace_layer(
+                    layer, name, nn.LeakyReLU,
+                    args={"negative_slope": 0.01}
+                )
 
+    def _replace_layer(self, layer, name, NewLayer, args):
+        mods = name.split('.')
+        cur_module = self
+        for mod_attr in mods[:-1]:
+            cur_module = getattr(cur_module, mod_attr)
+        setattr(cur_module, mods[-1], NewLayer(**args))

@@ -1,11 +1,9 @@
-import os
 from os.path import join
 from time import time
 import random
 import pathlib
 
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -13,26 +11,170 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix
 
+from src.utils import confusion_df
 from src.callbacks.loggers.logger import Logger
 from src.plotter import plot_img_mask_on_ax
-from src.tasks.test import evaluate_model, test, evaluate_loss, evaluate_metrics
+from src.tasks.test import evaluate_loss, evaluate_metrics, evaluate_loss_mean, evaluate_metrics_mean
 
 
 class Observables(Logger):
     """
     Base class for all observables during training of deep neural networks.
     """
+    def compute_train_on_batch(self, inputs, outputs, targets, dataloader=None):
+        pass
+
+    def compute_train_on_epoch(self, inputs, outputs, targets, device, dataloader=None):
+        pass
+
+    def compute_val_on_batch(self, inputs, outputs, targets, device, dataloader=None):
+        pass
+
+    def compute_val_on_epoch(self, inputs, outputs, targets, device, dataloader=None):
+        pass
+
+
+class ObservableImage(Observables):
+
+
+    def __init__(
+        self,
+        obs_name=None,
+        save_figure_path=None,
+        periods={
+            'train_batch': 100,
+            'val_batch': 100,
+            'train_epoch': 2,
+            'val_epoch': 2,
+        },
+        props={
+            'train_batch': 1,
+            'val_batch': 1,
+            'train_epoch': .3,
+            'val_epoch': .3,
+        },
+        background_to_hide=None,
+        do_tasks={
+            'train_batch': True,
+            'val_batch': True,
+            'train_epoch': True,
+            'val_epoch': True,
+        },
+    ):
+        """
+
+        Args:
+            model ([type]): [description]
+            idx_features (int): last index + 1 of the features creator. For ResNet_N, it is -3.
+            batch_size (int): Batch size to use when we evaluate the images in the net.
+            save_figure_path (str, optional): Path to folder to save figures.
+                                                 If None, does not save figures.Defaults to None.
+            periods (dict, optional): Number of batch to wait before saving figures.
+            props (dict, optional): Proportion of data to save.
+            background_to_hide (int, optional): Background of the figure to ignore when showing. Defaults to -1.
+        """
+
+        super().__init__()
+
+        self.save_figure_path = save_figure_path
+        self.periods = periods
+        self.props = props
+        self.do_tasks = do_tasks
+        self.ticks = {
+            'train_batch': 0,
+            'val_batch': 0,
+            'train_epoch': 0,
+            'val_epoch': 0,
+        }
+        self.bg_to_hide = background_to_hide
+
+        self.obs_name = obs_name
+
+
+    def _update_status(self, key, inputs, outputs, targets, dataloader, device):
+        """ To complete
+        """
+        pass
+
+
+    def _compute_key(self, key, inputs, outputs, targets, dataloader, device):
+        if not self.do_tasks[key]:
+            return
+        self._update_status(key, inputs, outputs, targets, dataloader, device)
+
+        if self.save_figure_path is None:
+            return
+
+        if 'epoch' in key:
+            filename = 'End_Epoch-{}'.format(self.current_epoch + 1)
+        else:
+            filename = 'Epoch-{}_Batch-{}'.format(self.current_epoch + 1, self.current_batch_idx + 1)
+        savepath = join(
+            self.save_figure_path,
+            '{}_{}'.format(key, self.obs_name),
+            filename,
+        )
+        self._save_on_ticks(savepath, key=key)
+
+
+    def compute_val_on_epoch(self, inputs, outputs, targets, dataloader, device):
+        self._compute_key('val_epoch', inputs, outputs, targets, dataloader, device)
+
+
+    def compute_val_on_batch(self, inputs, outputs, targets, dataloader, device):
+        self._compute_key('val_batch', inputs, outputs, targets, dataloader, device)
+
+
     def compute_train_on_batch(self, inputs, outputs, targets):
-        pass
+        self._compute_key('train_batch', inputs, outputs, targets, dataloader=None, device=None)
 
-    def compute_train_on_epoch(self, inputs, outputs, targets, device):
-        pass
 
-    def compute_val_on_batch(self, inputs, outputs, targets, device, ):
-        pass
+    def compute_train_on_epoch(self, inputs, outputs, targets, dataloader, device):
+        self._compute_key('train_epoch', inputs, outputs, targets, dataloader, device)
 
-    def compute_val_on_epoch(self, inputs, outputs, targets, device, ):
-        pass
+
+    def _save_on_ticks(self, savepath, key):
+        if self.save_figure_path is None:
+            return
+
+        if self.ticks[key] % self.periods[key] != 0:
+            # self.log_console('Saving {} {} in {} / {}'.format(
+            #     key, self.obs_name, self.ticks[key] % self.periods[key], self.periods[key]))
+            self.ticks[key] += 1
+            return
+
+        self._save_fig(savepath, self.props[key])
+        self.ticks[key] += 1
+
+
+    def show(self):
+        super().show()
+        for key in ['train_batch', 'val_batch']:
+            if not self.do_tasks[key]:
+                continue
+            self.log_console('Saving {} {} in {} / {}'.format(
+                key, self.obs_name, self.ticks[key] % self.periods[key], self.periods[key]))
+
+
+
+    def _save_fig(self, savepath, prop):
+        pathlib.Path(savepath).mkdir(exist_ok=True, parents=True)
+        self.log_console('Saving {} figures in '.format(self.obs_name), savepath)
+
+        # idexs = random.sample(range(len(self.cur_inputs)), int(len(self.cur_inputs)*prop))
+
+        for idx in tqdm(range(len(self.cur_inputs))):
+            fig = self._create_fig(idx)
+            fig.savefig(join(savepath, '{}.png'.format(idx)))
+            plt.close(fig)
+        self.log_console('Saved {} figures in '.format(self.obs_name), savepath)
+
+
+    def _create_fig(self, idx):
+        """ To complete
+        """
+        fig, axs = plt.subplots(1, 1)
+        return fig
 
 
 class MetricsAndLoss(Observables):
@@ -40,7 +182,15 @@ class MetricsAndLoss(Observables):
     Logger to store accuracies and uncertainties
     """
 
-    def __init__(self, model, criterion, metrics, save_weights_path=None, to_save_on='loss'):
+    def __init__(
+        self,
+        model,
+        criterion,
+        metrics,
+        save_weights_path=None,
+        to_save_on='loss',
+        use_recomputed_outputs=False,
+    ):
         super(MetricsAndLoss, self).__init__()
         self.metrics = {}
         if type(metrics) == list:
@@ -48,7 +198,7 @@ class MetricsAndLoss(Observables):
                 self.metrics[metric.__name__] = metric
         else:
             self.metrics = metrics
-        
+
         self.logs = {
             'val_loss_on_batch': None,
             'val_loss_on_epoch': None,
@@ -67,12 +217,13 @@ class MetricsAndLoss(Observables):
         # self.epoch_with_max_train_metric = 0
         # self.validation_logging = False
         self.min_val_loss = np.infty
-        self.max_metric = 0
+        self.max_metric = -np.infty
         self.best_weights_batch_epoch = None
         self.save_weights_path = save_weights_path
         self.model = model
         self.criterion = criterion
         self.to_save_on = to_save_on
+        self.use_recomputed_outputs = use_recomputed_outputs
 
     def compute_train_on_batch(self, inputs, outputs, targets):
         """
@@ -82,11 +233,14 @@ class MetricsAndLoss(Observables):
             targets (torch.Tensor): size = (batch_size): true targets
         """
         for key, metric in self.metrics.items():
-            self.logs['train_{}_on_batch'.format(key)] = metric(outputs, targets).mean(0)
+            metric_value = metric(outputs, targets)
+            if type(metric_value) == np.ndarray and metric_value.ndim > 1:
+                metric_value = metric_value.mean(0)
+            self.logs['train_{}_on_batch'.format(key)] = metric_value
             self.add_to_history(['train_{}_on_batch'.format(key)])
             self.write_tensorboard(keys=['train_{}_on_batch'.format(key)])
 
-    def compute_train_on_epoch(self, inputs, outputs, targets, device):
+    def compute_train_on_epoch(self, inputs=None, outputs=None, targets=None, dataloader=None, device='cpu'):
         """
         Logs we want to compute for each epoch on train
         Args:
@@ -95,15 +249,22 @@ class MetricsAndLoss(Observables):
             device (torch.device || str): which device to compute on (either on GPU or CPU). Either torch.device type or
                                       specific string 'cpu' or 'gpu'. Will be the same device as the model.
         """
-        total_metrics = evaluate_metrics(outputs, targets, self.metrics)
+        if self.use_recomputed_outputs and outputs is not None:
+            total_metrics = evaluate_metrics(outputs, targets, self.metrics)
+        else:
+            total_metrics = evaluate_metrics_mean(self.model, dataloader, self.metrics, device=device)
+
 
         for key, metric in total_metrics.items():
+            if type(metric) == np.ndarray and metric.ndim > 1:
+                metric = metric.mean(0)
+
             self.logs['train_{}_on_epoch'.format(key)] = metric
 
             self.add_to_history(['train_{}_on_epoch'.format(key)])
             self.write_tensorboard(keys=['train_{}_on_epoch'.format(key)])
 
-    def compute_val(self, outputs, targets, device, key_type, save_best_weights=True,):
+    def compute_val(self, key_type, outputs=None, targets=None, dataloader=None, device='cpu', save_best_weights=True,):
         """
         Compute validation loss and metric and adds to history
         Args:
@@ -114,28 +275,36 @@ class MetricsAndLoss(Observables):
             save_best_weights (bool): whether we save weights or not
         """
 
-        val_loss = evaluate_loss(outputs, targets, self.criterion)
-        val_metrics = evaluate_metrics(outputs, targets, self.metrics)
+        if self.use_recomputed_outputs and outputs is not None:
+            val_loss = evaluate_loss(outputs, targets, self.criterion)
+            val_metrics = evaluate_metrics(outputs, targets, self.metrics)
+        else:
+            val_loss = evaluate_loss_mean(self.model, dataloader, self.criterion, device=device)
+            val_metrics = evaluate_metrics_mean(self.model, dataloader, self.metrics, device=device)
+
 
         if 'loss' in self.to_save_on:
             if val_loss < self.min_val_loss:
                 self.min_val_loss = val_loss
                 self.best_weights_batch_epoch = (self.current_batch_idx, self.current_epoch)
-                print('Updated best weights batch epoch:', self.best_weights_batch_epoch)
+                self.log_console('Updated best weights batch epoch:', self.best_weights_batch_epoch)
                 if self.save_weights_path is not None and save_best_weights:
                     torch.save(self.model.state_dict(), join(self.save_weights_path, 'best_weights.pt'))
-                    print('Updated best weights on ', self.to_save_on)
+                    self.log_console('Updated best weights on ', self.to_save_on)
         else:
             if val_metrics[self.to_save_on] > self.max_metric:
                 self.max_metric = val_metrics[self.to_save_on]
                 self.best_weights_batch_epoch = (self.current_batch_idx, self.current_epoch)
-                print('Updated best weights batch epoch:', self.best_weights_batch_epoch)
+                self.log_console('Updated best weights batch epoch:', self.best_weights_batch_epoch)
                 if self.save_weights_path is not None and save_best_weights:
                     torch.save(self.model.state_dict(), join(self.save_weights_path, 'best_weights.pt'))
-                    print('Updated best weights on ', self.to_save_on)
+                    self.log_console('Updated best weights on ', self.to_save_on)
 
         for key in self.metrics.keys():
-            self.logs['val_{}_on_{}'.format(key, key_type)] = val_metrics[key]
+            metric_value = val_metrics[key]
+            if type(metric_value) == np.ndarray and metric_value.ndim > 1:
+                metric_value = metric_value.mean(0)
+            self.logs['val_{}_on_{}'.format(key, key_type)] = metric_value
             self.add_to_history(['val_{}_on_{}'.format(key, key_type)])
             self.write_tensorboard(keys=['val_{}_on_{}'.format(key, key_type)])
 
@@ -147,7 +316,8 @@ class MetricsAndLoss(Observables):
             'val_loss_on_{}'.format(key_type),
         ])
 
-    def compute_val_on_batch(self, inputs, outputs, targets, device, save_best_weights=True,):
+    def compute_val_on_batch(self, inputs=None, outputs=None, targets=None,
+     dataloader=None, device='cpu', save_best_weights=True,):
         """
         Compute validation loss and metric on one batch and adds to history
         Args:
@@ -161,11 +331,13 @@ class MetricsAndLoss(Observables):
             outputs=outputs,
             targets=targets,
             device=device,
+            dataloader=dataloader,
             key_type='batch',
             save_best_weights=save_best_weights,
         )
 
-    def compute_val_on_epoch(self, inputs, outputs, targets, device, save_best_weights=True,):
+    def compute_val_on_epoch(self, inputs=None, outputs=None, targets=None,
+     dataloader=None, device='cpu', save_best_weights=True,):
         """
         Compute validation loss and metric on epoch and adds to history
         Args:
@@ -177,16 +349,17 @@ class MetricsAndLoss(Observables):
             outputs=outputs,
             targets=targets,
             device=device,
+            dataloader=dataloader,
             key_type='epoch',
             save_best_weights=save_best_weights,
         )
 
     def show(self):
         super().show()
-        print('Epochs Batch Best Weights: ', self.best_weights_batch_epoch)
+        self.log_console('Epochs Batch Best Weights: ', self.best_weights_batch_epoch)
 
 
-class LRChecker(Logger):
+class LRChecker(Observables):
     """
     Logger to check the evolution of learning rate
     """
@@ -204,6 +377,11 @@ class LRChecker(Logger):
             'lr'
         ])
         self.write_tensorboard()
+
+
+    def compute_train_on_batch(self, *args, **kwargs):
+        self.update_lr()
+
 
     @property
     def _lr(self):
@@ -242,48 +420,15 @@ class MemoryChecker(Observables):
         self.check_memory()
 
 
-class ShowImageSegmentation(Observables):
-
-    def __init__(self, figure_args={}, period=1, ):
-        super().__init__()
-        self.period = period
-        self.figure_args = figure_args
-        self.tick = 0
-
-        self.cur_img = None
-        self.mask_true = None
-        self.mask_pred = None
-
-    def compute_train_on_batch(self, inputs, outputs, targets):
-
-        img, output, target = inputs[0].squeeze(), outputs[0], targets[0]
-
-        self.cur_img = img.detach().cpu()
-        self.mask_true = target.detach().cpu()
-        self.mask_pred = output.argmax(0).detach().cpu()
-
-    def show(self):
-
-        if self.tick % self.period == 0:
-            fig, axs = plt.subplots(1, 2, **self.figure_args)
-            axs[0].set_title('True')
-            axs[1].set_title('Pred')
-            fig.suptitle('Epoch: {}. Batch: {}'.format(self.current_epoch+1, self.current_batch_idx+1))
-            if len(self.cur_img.shape) == 2:
-                plot_img_mask_on_ax(axs[0], self.cur_img, self.mask_true)
-                plot_img_mask_on_ax(axs[1], self.cur_img, self.mask_pred)
-            elif len(self.cur_img.shape) == 3:
-                plot_img_mask_on_ax(axs[0], self.cur_img[self.cur_img.shape[0]//2], self.mask_true)
-                plot_img_mask_on_ax(axs[1], self.cur_img[self.cur_img.shape[0]//2], self.mask_pred)
-                
-            # #fig.show()  # Uncomment if not in a notebook
-        self.tick += 1
-
-
-# TODO: more than 2 classes
 class ConfusionMatrix(Observables):
 
-    def __init__(self, save_csv_path=None, threshold=.5, labels=[0, 1]):
+    def __init__(
+        self,
+        save_csv_path=None,
+        threshold=None,
+        n_classes=2,
+        metrics={},
+    ):
         super().__init__()
         self.logs = {
             'train_on_batch': None,
@@ -293,7 +438,10 @@ class ConfusionMatrix(Observables):
         }
         self.save_csv_path = save_csv_path
         self.threshold = threshold
-        self.labels = labels
+        self.n_classes = n_classes
+        self.labels = range(n_classes)
+        self.metrics = metrics
+
 
         if self.save_csv_path is not None:
             self.paths = {
@@ -311,87 +459,105 @@ class ConfusionMatrix(Observables):
             'val_on_batch': None,
             'val_on_epoch': None,
         }
-        
-        
-        
+
+        self.y_true = {
+            'train_on_batch': None,
+            'train_on_epoch': None,
+            'val_on_batch': None,
+            'val_on_epoch': None,
+        }
+        self.y_pred = {
+            'train_on_batch': None,
+            'train_on_epoch': None,
+            'val_on_batch': None,
+            'val_on_epoch': None,
+        }
+
+
 
     def compute_train_on_batch(self, inputs, outputs, targets):
         self._compute_and_save(
-            outputs, 
-            targets, 
-            'train_on_batch', 
+            outputs,
+            targets,
+            'train_on_batch',
             'cm_batch_train-{}.csv'.format(self.current_batch_idx),
         )
 
-    def compute_train_on_epoch(self, inputs, outputs, targets, device):
+    def compute_train_on_epoch(self, inputs, outputs, targets, device, dataloader=None):
         self._compute_and_save(outputs, targets, 'train_on_epoch', 'cm_epoch_train-{}.csv'.format(self.current_epoch))
 
-    def compute_val_on_batch(self, inputs, outputs, targets, device, ):
+    def compute_val_on_batch(self, inputs, outputs, targets, device, dataloader=None):
         self._compute_and_save(outputs, targets, 'val_on_batch', 'cm_batch_val-{}.csv'.format(self.current_batch_idx))
 
-    def compute_val_on_epoch(self, inputs, outputs, targets, device, ):
+    def compute_val_on_epoch(self, inputs, outputs, targets, device, dataloader=None):
         self._compute_and_save(outputs, targets, 'val_on_epoch', 'cm_epoch_val-{}.csv'.format(self.current_epoch))
 
     def _compute_and_save(self, outputs, targets, key, filename):
         outputs = outputs.cpu().detach().numpy()
         targets = targets.cpu().detach().numpy()
         self.current_targets[key] = targets
-        if outputs.squeeze().ndim == 2:
-            y_pred = outputs[:, 1] > self.threshold
-        elif outputs.squeeze().ndim == 1:
-            y_pred = (outputs > self.threshold) + 0
-        
+        if self.n_classes == 2 and self.threshold is not None:
+            if outputs.squeeze().ndim == 2:
+                y_pred = outputs[:, 1] > self.threshold
+            elif outputs.squeeze().ndim == 1:
+                y_pred = (outputs > self.threshold) + 0
+        else:
+            y_pred = outputs.argmax(1)
+
         if targets.squeeze().ndim == 2:
             y_true = targets.argmax(1)
         elif targets.squeeze().ndim == 1:
             y_true = targets + 0
-        
+
+        self.y_pred[key] = y_pred
+        self.y_true[key] = y_true
+
         self.logs[key] = confusion_matrix(y_true, y_pred, labels=self.labels)
         self.add_to_history([key])
         self.save_to_csv(key, filename)
 
 
+
     def _get_dataframe(self, key):
         cm = self.logs[key]
-        # f1_baseline = 2 / (1/self.current_targets[key].mean() + 1 )  # max f1 with policy independent of true
-        f1_baseline = self.current_targets[key].mean()                 # f1 with weigthed random sampling 
-        recall = cm[1, 1] / (cm[1,1] + cm[1, 0])
-        precision = cm[1, 1] / (cm[1,1] + cm[0, 1])
-        f1 = 2 / ( 1 / recall + 1 / precision)
-        df = pd.DataFrame({
-            '0': [cm[0, 0], cm[1, 0], cm[:, 0].sum()],
-            '1': [cm[0, 1], cm[1, 1], cm[:, 1].sum()],
-            'sum': [cm[0].sum(), cm[1].sum(), '-'],
-            '|': ['|', '|', '|'],
-            '0 - norm': np.array([cm[0, 0]/ cm[0, :].sum() , cm[1, 0]/ cm[1, :].sum() , 1]),
-            '1 - norm': np.array([cm[0, 1]/ cm[0, :].sum() , cm[1, 1]/ cm[1, :].sum() , 1]),
-            '||': ['|', '|', '|'],
-            'f1 (baseline - score)': [f1_baseline, f1, '-'],
-        }, index=['True 0', 'True 1', 'Sum']).round(2)
-        df = df.reindex(columns=['0', '1', 'sum', '|', '0 - norm', '1 - norm', '||', 'f1 (baseline - score)'])
-        return df
+        y_pred = self.y_pred[key]
+        y_true = self.y_true[key]
+        assert cm is not None, self.log_console(key)
+        assert y_pred is not None, self.log_console(key)
+        assert y_true is not None, self.log_console(key)
 
-    def save_to_csv(self, key, filename):    
+        cmdf = confusion_df(y_pred, y_true, metrics=self.metrics)
+
+        return cmdf
+
+    def save_to_csv(self, key, filename):
         if self.save_csv_path is not None:
             self._get_dataframe(key).to_csv(join(self.paths[key], filename))
-    
+
     def show(self):
         t1 = time()
-        print(
+        self.log_console(
             'train batch confusion computed on: {}\n'.format(time() - t1),
             self._get_dataframe('train_on_batch'),
         )
         if self.logs['val_on_batch'] is not None:
             t2 = time()
-            print(
+            self.log_console(
                 'validation batch confusion computed on: {}\n'.format(time() - t2),
                 self._get_dataframe('val_on_batch'),
             )
         if self.logs['train_on_epoch'] is not None:
             t3 = time()
-            print(
+            self.log_console(
                 'train epoch confusion computed on: {}\n'.format(time() - t3),
                 self._get_dataframe('train_on_epoch'),
+            )
+
+        if self.logs['val_on_epoch'] is not None:
+            t4 = time()
+            self.log_console(
+                'val epoch confusion computed on: {}\n'.format(time() - t4),
+                self._get_dataframe('val_on_epoch'),
             )
 
     def init_tensorboard_writer(self, path=None):
@@ -422,7 +588,7 @@ class Activations(Observables):
         outputs = outputs.squeeze()
         if outputs.ndim == 2:
             outputs = outputs[:, 1] + 0
-            
+
         self.logs[key] = outputs.detach().cpu().numpy()
         self.logs[key + '-mean'] = self.logs[key].mean()
         self.logs[key + '-std'] = self.logs[key].std()
@@ -438,28 +604,28 @@ class Activations(Observables):
             key + '-std',
         ])
 
-    def compute_train_on_batch(self, inputs, outputs, targets):
+    def compute_train_on_batch(self, inputs, outputs, targets, ):
         self._evaluate_activation(outputs, 'train_on_batch')
 
-    def compute_train_on_epoch(self, inputs, outputs, targets, device):
+    def compute_train_on_epoch(self, inputs, outputs, targets, device, dataloader=None):
         self._evaluate_activation(outputs, 'train_on_epoch')
 
-    def compute_val_on_batch(self, inputs, outputs, targets, device, ):
+    def compute_val_on_batch(self, inputs, outputs, targets, device, dataloader=None):
         self._evaluate_activation(outputs, 'val_on_batch')
 
-    def compute_val_on_epoch(self, inputs, outputs, targets, device, ):
+    def compute_val_on_epoch(self, inputs, outputs, targets, device, dataloader=None):
         self._evaluate_activation(outputs, 'val_on_epoch')
 
     def show(self):
-        
+
         if self.show_train_batch:
-            print('Activations train batch:', self.logs['train_on_batch'])
+            self.log_console('Activations train batch:', self.logs['train_on_batch'])
         for key in ['train_on_batch', 'val_on_batch', 'train_on_epoch']:
             if self.logs['activation_' + key] is not None:
-                print('Activations {}: mean {}, std {}'.format(
+                self.log_console('Activations {}: mean {}, std {}'.format(
                     key, self.logs['activation_' + key+'-mean'], self.logs['activation_' + key+'-std'])
                 )
-        
+
     def init_tensorboard_writer(self, path=None, keys=None):
         if self.do_tensorboard:
             keys = set(self.logs.keys()).difference([
@@ -477,10 +643,10 @@ class CheckLayers(Observables):
         super().__init__()
         self.model = model
         self.layers_set = layers_set
-        
+
         if type(layers_set) != dict:
             self.layers_set = {k: v for (k, v) in enumerate(layers_set)}
-        
+
 
         self.logs = {
             'other_layers-weights_sum': 0,
@@ -508,66 +674,77 @@ class CheckLayers(Observables):
         self.write_tensorboard()
 
     # def show(self):
-    #     print('Sum of layers minus {}:'.format(self.layers_avoid), list(self.logs.values())[0])
-        
-    
-class ShowImages(Observables):
+    #     self.log_console('Sum of layers minus {}:'.format(self.layers_avoid), list(self.logs.values())[0])
 
-    def __init__(self, save_figure_path=None, period=1, do_tensorboard=False):
-        super().__init__()
-        self.save_figure_path = save_figure_path
-        self.ticks = 0
-        self.period = period
-        
-        self.cur_imgs = None
+
+class ShowImages(ObservableImage):
+
+
+    def __init__(self, model=None, *args, **kwargs):
+        super().__init__(obs_name='images', *args, **kwargs)
+
+        self.model = model
+
+        self.cur_inputs = None
         self.cur_outputs = None
         self.cur_targets = None
 
-        self.do_tensorboard = do_tensorboard
 
-    def compute_train_on_batch(self, inputs, outputs, targets):
-        self.cur_imgs = inputs.cpu().detach()
-        self.cur_outputs = outputs.cpu().detach()
-        self.cur_targets = targets.cpu().detach()
-    
-    def show(self):
+    def _update_status(self, key, inputs, outputs, targets, dataloader, device):
 
-        if self.save_figure_path == None:
-            return
-        
-        if self.ticks % self.period != 0:
-            print('Saving images in {} / {}'.format(self.ticks % self.period, self.period))
-            self.ticks += 1
-            return
+        if inputs is not None:
 
-        self._save_fig()
-        self.ticks += 1
+            len_data = len(inputs)
+            idexs = random.sample(range(len_data), int(len_data * self.props[key]))
 
-    def _save_fig(self):
-        savepath = join(
-            self.save_figure_path,
-            'images',
-            'training_batches',
-            'Epoch-{}_Batch-{}'.format(self.current_epoch + 1, self.current_batch_idx + 1),
-        )
-        pathlib.Path(savepath).mkdir(exist_ok=True, parents=True)
-        print('Saving training figures in ', savepath)
-        for idx, (img, output, target) in enumerate(zip(self.cur_imgs, self.cur_outputs, self.cur_targets)):
-            if img.min() == -1:
-                fig, axs = plt.subplots(1, img.shape[0], figsize=(10, 5))
-                for chan in range(img.shape[0]):
-                    axs[chan].imshow(img[chan], cmap='gray')
-            else:
-                fig, axs = plt.subplots(2, img.shape[0], figsize=(10, 5))
-                for chan in range(img.shape[0]):
-                    axs[0, chan].imshow(img[chan], cmap='gray')
-                    axs[1, chan].imshow(np.where(img[chan] != -1, img[chan], 0), cmap='gray')
+            self.cur_inputs = list(inputs.detach().cpu()[idexs])
+            self.cur_outputs = list(outputs.detach().cpu()[idexs])
+            self.cur_targets = list(targets.detach().cpu()[idexs])
 
-            fig.suptitle('Output: {}. Target: {}'.format(output.item(), target.item()))
+        else:
 
-            fig.savefig(join(savepath, '{}.png'.format(idx)))
-            plt.close(fig)
-        print('Saved training figures in ', savepath)
+            self.cur_inputs = []
+
+            self.model.to(device)
+            len_data = len(dataloader.dataset)
+            idexs = random.sample(range(len_data), int(len_data * self.props[key]))
+            with torch.no_grad():
+                # for inputs, targets in dataloader:
+                for idx in idexs:
+                    inputs, targets = dataloader.dataset[idx]
+                    inputs = inputs.unsqueeze(0).to(device)
+                    targets = targets.unsqueeze(0).to(device)
+
+                    outputs = self.model(inputs)
+
+                    self.cur_inputs += list(inputs.detach().cpu())
+                    self.cur_outputs += list(outputs.detach().cpu())
+                    self.cur_targets += list(targets.detach().cpu())
+
+
+    def _create_fig(self, idx):
+
+        img = self.cur_inputs[idx]
+        output = self.cur_outputs[idx]
+        target = self.cur_targets[idx]
+        nchans = img.shape[0]
+
+        fig, axs = plt.subplots(1, nchans, figsize=(nchans*5, 5))
+
+        fig.suptitle('Pred: {}. True: {}.'.format(output, target))
+        for chan in range(nchans):
+            axs[chan].imshow(img[chan], cmap='gray')
+        # axs[0].set_title('True')
+        # axs[1].set_title('Pred')
+        # fig.suptitle('Epoch: {}. Batch: {}'.format(self.current_epoch+1, self.current_batch_idx+1))
+        # if len(img.shape) == 2:
+        #     plot_img_mask_on_ax(axs[0], img, mask_true)
+        #     plot_img_mask_on_ax(axs[1], img, mask_pred)
+        # elif len(img.shape) == 3:
+        #     plot_img_mask_on_ax(axs[0], img[img.shape[0]//2], mask_true)
+        #     plot_img_mask_on_ax(axs[1], img[img.shape[0]//2], mask_pred)
+
+        return fig
 
 
 class GradientsLossInputs(Observables):
@@ -596,24 +773,24 @@ class GradientsLossInputs(Observables):
         else:
             self.logs['gradient_input_sum'] = self.cur_grads[inputs != self.bg].abs().sum()
             self.logs['gradient_input_sum_bg'] = self.cur_grads[inputs == self.bg].abs().sum()
-        
+
         self.add_to_history([
             'gradient_input_sum',
             'gradient_input_sum_bg',
         ])
         self.write_tensorboard()
 
-    
+
     def show(self):
         super().show()
-        if self.save_figure_path == None:
+        if self.save_figure_path is None:
             return
-        
+
         if self.ticks % self.period != 0:
-            print('Saving gradients in {} / {}'.format(self.ticks % self.period, self.period))
+            self.log_console('Saving gradients in {} / {}'.format(self.ticks % self.period, self.period))
             self.ticks += 1
             return
-        
+
         savepath = join(
             self.save_figure_path,
             'images',
@@ -624,7 +801,7 @@ class GradientsLossInputs(Observables):
         self.ticks += 1
 
     def compute_train_on_epoch(self, inputs, outputs, targets, device):
-        if self.save_figure_path == None:
+        if self.save_figure_path is None:
             return
 
         savepath = join(
@@ -639,7 +816,7 @@ class GradientsLossInputs(Observables):
 
 
         pathlib.Path(savepath).mkdir(exist_ok=True, parents=True)
-        print('Saving training figures in ', savepath)
+        self.log_console('Saving training figures in ', savepath)
         for idx, (img, grad) in enumerate(zip(self.cur_inputs, self.cur_grads)):
             fig, axs = plt.subplots(2, img.shape[0], figsize=(10, 10))
             for chan in range(img.shape[0]):
@@ -650,13 +827,13 @@ class GradientsLossInputs(Observables):
 
             fig.savefig(join(savepath, '{}.png'.format(idx)))
             plt.close(fig)
-        print('Saved training figures in ', savepath)
+        self.log_console('Saved training figures in ', savepath)
 
 
 class SaliencyMaps(Observables):
     """
     Implements Saliency Maps: <https://arxiv.org/abs/1312.6034>
-    
+
     """
 
     def __init__(
@@ -715,7 +892,7 @@ class SaliencyMaps(Observables):
             grad_weights = torch.zeros_like(outputs)
             grad_weights[np.arange(outputs.shape[0]), self.cur_preds] = 1
             outputs.backward(grad_weights)
-            self.cur_grads = inputs.grad 
+            self.cur_grads = inputs.grad
         else:
             self.cur_preds = 2 * (outputs > self.threshold) - 1       # preds are either 1 or -1
 
@@ -731,14 +908,14 @@ class SaliencyMaps(Observables):
         self.cur_targets = targets.detach().cpu()
 
         self.compute_saliency_maps(inputs, outputs)
-        
-    
+
+
     def compute_train_on_batch(self, inputs, outputs, targets):
         if not self.do_tasks['train_on_batch']:
             return
         self._update_status(inputs, outputs, targets)
 
-        if self.save_figure_path == None:
+        if self.save_figure_path is None:
             return
 
         savepath = join(
@@ -750,15 +927,15 @@ class SaliencyMaps(Observables):
 
         self._save_on_ticks(savepath, key='train_on_batch')
 
-    
+
     def compute_train_on_epoch(self, inputs, outputs, targets, device):
         if not self.do_tasks['train_on_epoch']:
             return
         self._update_status(inputs, outputs, targets)
-        
+
 
         if self.save_figure_path is None:
-            return 
+            return
 
         savepath = join(
             self.save_figure_path,
@@ -775,7 +952,7 @@ class SaliencyMaps(Observables):
         self._update_status(inputs, outputs, targets)
 
         if self.save_figure_path is None:
-            return 
+            return
 
         savepath = join(
             self.save_figure_path,
@@ -793,7 +970,7 @@ class SaliencyMaps(Observables):
         self._update_status(inputs, outputs, targets)
 
         if self.save_figure_path is None:
-            return 
+            return
 
         savepath = join(
             self.save_figure_path,
@@ -806,15 +983,14 @@ class SaliencyMaps(Observables):
 
     def show(self):
         super().show()
-        for key in self.ticks.keys():
-            print('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
 
 
     def _save_on_ticks(self, savepath, key):
-        if self.save_figure_path == None:
+        if self.save_figure_path is None:
             return
-        
+
         if self.ticks[key] % self.periods[key] != 0:
+            self.log_console('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
             self.ticks[key] += 1
             return
 
@@ -826,16 +1002,15 @@ class SaliencyMaps(Observables):
 
 
         pathlib.Path(savepath).mkdir(exist_ok=True, parents=True)
-        print('Saving figures in ', savepath)
+        self.log_console('Saving figures in ', savepath)
 
         idexs = random.sample(range(len(self.cur_inputs)), int(len(self.cur_inputs)*prop))
 
         for idx in tqdm(idexs):
             img = self.cur_inputs[idx] + 0
-            if self.bg_to_hide is not None:
-                img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
+            img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
             grad = self.cur_grads[idx]
-            fig, axs = plt.subplots(3, img.shape[0], figsize=(img.shape[0]*5, 3*5), squeeze=False)
+            fig, axs = plt.subplots(3, img.shape[0], figsize=(img.shape[0]*5, 3*5))
             for chan in range(img.shape[0]):
                 axs[0, chan].imshow(img[chan], cmap='gray')
                 axs[0, chan].set_title('Input')
@@ -843,7 +1018,7 @@ class SaliencyMaps(Observables):
                 axs[1, chan].set_title('Gradient')
                 axs[2, chan].imshow(np.maximum(grad[chan], 0), cmap='gray')
                 axs[2, chan].set_title('Max(Gradient, 0)')
-            
+
             fig.suptitle('Outputs: {}. Prediction: {}. Targets: {}'.format(
                 self.cur_outputs[idx].squeeze(),
                 self.cur_preds[idx].squeeze().item(),
@@ -851,13 +1026,79 @@ class SaliencyMaps(Observables):
             ))
             fig.savefig(join(savepath, '{}.png'.format(idx)))
             plt.close(fig)
-        print('Saved figures in ', savepath)
+        self.log_console('Saved figures in ', savepath)
 
-        
+
+class ShowImageSegmentation(ObservableImage):
+
+    def __init__(self, model=None, *args, **kwargs):
+        super().__init__(obs_name='segmentation', *args, **kwargs)
+
+        self.model = model
+
+        self.cur_inputs = None
+        self.mask_true = None
+        self.mask_pred = None
+
+    def _update_status(self, key, inputs, outputs, targets, dataloader, device):
+
+        if inputs is not None:
+
+            len_data = len(inputs)
+            idexs = random.sample(range(len_data), int(len_data * self.props[key]))
+
+            self.cur_inputs = list(inputs.detach().cpu()[idexs])
+            self.mask_true = list(targets.detach().cpu()[idexs])
+            self.mask_pred = list(outputs.argmax(1).detach().cpu()[idexs])
+
+
+
+
+        else:
+
+            self.cur_inputs = []
+            self.mask_true = []
+            self.mask_pred = []
+
+            self.model.to(device)
+            len_data = len(dataloader.dataset)
+            idexs = random.sample(range(len_data), int(len_data * self.props[key]))
+            with torch.no_grad():
+                # for inputs, targets in dataloader:
+                for idx in idexs:
+                    inputs, targets = dataloader.dataset[idx]
+                    inputs, targets = inputs.unsqueeze(0).to(device), targets.unsqueeze(0).to(device)
+                    outputs = self.model(inputs)
+
+                    self.cur_inputs += list(inputs.detach().cpu())
+                    self.mask_true += list(targets.int().detach().cpu())
+                    self.mask_pred += list(outputs.argmax(1).detach().cpu())
+
+
+    def _create_fig(self, idx):
+
+        img = self.cur_inputs[idx]
+        mask_pred = self.mask_pred[idx]
+        mask_true = self.mask_true[idx]
+
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+        axs[0].set_title('True')
+        axs[1].set_title('Pred')
+        fig.suptitle('Epoch: {}. Batch: {}'.format(self.current_epoch+1, self.current_batch_idx+1))
+        if len(img.shape) == 2:
+            plot_img_mask_on_ax(axs[0], img, mask_true)
+            plot_img_mask_on_ax(axs[1], img, mask_pred)
+        elif len(img.shape) == 3:
+            plot_img_mask_on_ax(axs[0], img[img.shape[0]//2], mask_true)
+            plot_img_mask_on_ax(axs[1], img[img.shape[0]//2], mask_pred)
+
+        return fig
+
+
 class GradCAM(Observables):
     """
     Implements Grad-CAM: <https://arxiv.org/abs/1610.02391>
-    
+
     """
 
     def __init__(
@@ -887,15 +1128,16 @@ class GradCAM(Observables):
         },
     ):
         """
-        
+
         Args:
             model ([type]): [description]
             idx_features (int): last index + 1 of the features creator. For ResNet_N, it is -3.
-            batch_size ([type]): [description]
-            save_figure_path ([type], optional): [description]. Defaults to None.
-            periods (dict, optional): [description]. Defaults to {'train_on_batch': 100,'val_on_batch': 100,'train_on_epoch': 2,'val_on_epoch': 2,}.
-            props (dict, optional): [description]. Defaults to {'train_on_batch': 1,'val_on_batch': 1,'train_on_epoch': .3,'val_on_epoch': .3,}.
-            background_to_hide (int, optional): [description]. Defaults to -1.
+            batch_size (int): Batch size to use when we evaluate the images in the net.
+            save_figure_path (str, optional): Path to folder to save figures.
+                                                 If None, does not save figures.Defaults to None.
+            periods (dict, optional): Number of batch to wait before saving figures.
+            props (dict, optional): Proportion of data to save.
+            background_to_hide (int, optional): Background of the figure to ignore when showing. Defaults to -1.
         """
 
         super().__init__()
@@ -949,7 +1191,7 @@ class GradCAM(Observables):
             features = self.fsel(imgs)
             features.retain_grad()
             outputs = self.frest(features)
-            
+
             # Guided backprop
             cur_preds = outputs.argmax(1)
             all_preds.append(cur_preds)
@@ -960,14 +1202,14 @@ class GradCAM(Observables):
             # GradCAM
             wg = features.grad.mean((2, 3))
             gradcam = F.relu((features * wg[..., None, None]).sum(1).detach())
-            gradcams.append(gradcam[:, None, ...]) # Put one channel to the batch
+            gradcams.append(gradcam[:, None, ...])  # Put one channel to the batch
             guided_bps.append(inputs.grad[idx_start:idx_start + self.batch_size])
             idx_start = idx_start + self.batch_size
 
-        self.gradcam = torch.cat(gradcams, axis=0).detach()#.cpu()
-        self.guided_bp = torch.cat(guided_bps, axis=0).detach()#.cpu()
-        self.cur_preds = torch.cat(all_preds, axis=0).detach()#.cpu()
-        
+        self.gradcam = torch.cat(gradcams, axis=0).detach()
+        self.guided_bp = torch.cat(guided_bps, axis=0).detach()
+        self.cur_preds = torch.cat(all_preds, axis=0).detach()
+
         self._reset_hooks()
 
     def _update_status(self, inputs, outputs, targets):
@@ -987,12 +1229,12 @@ class GradCAM(Observables):
             """
             If there is a negative gradient, changes it to zero
             """
-            if isinstance(module, nn.ReLU):
+            if isinstance(module, nn.ReLU) or isinstance(module, nn.LeakyReLU):
                 return (torch.clamp(grad_in[0], min=0.0),)
         # Loop through layers, hook up ReLUs with relu_hook_function
 
         for module in self.model.modules():
-            if isinstance(module, nn.ReLU):
+            if isinstance(module, nn.ReLU) or isinstance(module, nn.LeakyReLU):
                 self.hooks_handles.append(module.register_backward_hook(relu_hook_function))
 
 
@@ -1001,22 +1243,21 @@ class GradCAM(Observables):
             handle.remove()
         self.hooks_handles = []
 
-    
+
     def _save_fig(self, savepath, prop):
 
 
         pathlib.Path(savepath).mkdir(exist_ok=True, parents=True)
-        print('Saving figures in ', savepath)
+        self.log_console('Saving figures in ', savepath)
 
         idexs = random.sample(range(len(self.cur_inputs)), int(len(self.cur_inputs)*prop))
 
         for idx in tqdm(idexs):
             img = self.cur_inputs[idx] + 0
-            if self.bg_to_hide is not None:
-                img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
+            img[img == self.bg_to_hide] = img[img != self.bg_to_hide].min()
             gradcam = F.upsample(self.gradcam[idx][None, ...], img.shape[-1], mode='bicubic')
             guided_bp = self.guided_bp[idx]
-            fig, axs = plt.subplots(5, img.shape[0], figsize=(img.shape[0]*5, 5*5), squeeze=False)
+            fig, axs = plt.subplots(5, img.shape[0], figsize=(img.shape[0]*5, 5*5))
             for chan in range(img.shape[0]):
                 axs[0, chan].imshow(img[chan], cmap='gray')
                 axs[0, chan].set_title('Input')
@@ -1028,7 +1269,7 @@ class GradCAM(Observables):
                 axs[3, chan].set_title('Guided GradCAM on image')
                 plot_img_mask_on_ax(axs[4, chan], img[chan], F.relu(gradcam[0, 0] * guided_bp[chan]).cpu())
                 axs[4, chan].set_title('Relu Guided GradCAM')
-                
+
 
 
             fig.suptitle('Outputs: {}. Prediction: {}. Targets: {}'.format(
@@ -1038,7 +1279,7 @@ class GradCAM(Observables):
             ))
             fig.savefig(join(savepath, '{}.png'.format(idx)))
             plt.close(fig)
-        print('Saved figures in ', savepath)
+        self.log_console('Saved figures in ', savepath)
 
 
     def compute_val_on_epoch(self, inputs, outputs, targets, device):
@@ -1047,7 +1288,7 @@ class GradCAM(Observables):
         self._update_status(inputs, outputs, targets)
 
         if self.save_figure_path is None:
-            return 
+            return
 
         savepath = join(
             self.save_figure_path,
@@ -1060,11 +1301,11 @@ class GradCAM(Observables):
 
     def compute_val_on_batch(self, inputs, outputs, targets, device):
         if not self.do_tasks['val_on_batch']:
-            return        
+            return
         self._update_status(inputs, outputs, targets)
 
         if self.save_figure_path is None:
-            return 
+            return
 
         savepath = join(
             self.save_figure_path,
@@ -1072,15 +1313,15 @@ class GradCAM(Observables):
             'val_batch_gradcam',
             'Epoch-{}_Batch-{}'.format(self.current_epoch + 1, self.current_batch_idx + 1),
         )
-        self._save_on_ticks(savepath, key='val_on_batch')        
+        self._save_on_ticks(savepath, key='val_on_batch')
 
 
     def compute_train_on_batch(self, inputs, outputs, targets):
         if not self.do_tasks['train_on_batch']:
-            return        
+            return
         self._update_status(inputs, outputs, targets)
 
-        if self.save_figure_path == None:
+        if self.save_figure_path is None:
             return
 
         savepath = join(
@@ -1094,19 +1335,16 @@ class GradCAM(Observables):
 
     def show(self):
         super().show()
-        for key in self.ticks.keys():
-            print('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
+
 
     def _save_on_ticks(self, savepath, key):
-        if self.save_figure_path == None:
+        if self.save_figure_path is None:
             return
-        
+
         if self.ticks[key] % self.periods[key] != 0:
+            self.log_console('Saving gradients in {} / {}'.format(self.ticks[key] % self.periods[key], self.periods[key]))
             self.ticks[key] += 1
             return
 
         self._save_fig(savepath, self.props[key])
         self.ticks[key] += 1
-
-
-    

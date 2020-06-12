@@ -5,8 +5,9 @@ def format_time(s):
     s %= 60
     return "%02i:%02i:%02i" % (h, m, s)
 
+
 class EmptyContextManager:
-    
+
     def __enter__(self):
         pass
 

@@ -2,18 +2,16 @@ import os
 from os.path import join
 import pathlib
 from datetime import datetime
-from time import time
 import re
 
 import pandas as pd
-from all_paths import all_paths
 
 
 def get_next_same_name(parent_dir, pattern=''):
     """
-    Scans the folder parent dir for files/folders with name 'pattern{}' with {} being an integer. Returns 
+    Scans the folder parent dir for files/folders with name 'pattern{}' with {} being an integer. Returns
     the path to the file/folder with name 'pattern-{}' with the highest number +1.
-    
+
     Args:
         parent_dir (str): path to the parent directory of the files / folders with the pattern
         pattern (str, optional): pattern of the file to look for. Defaults to ''.
@@ -32,23 +30,23 @@ def get_next_same_name(parent_dir, pattern=''):
 def get_save_path(
     path_dirs,
     path_to_manager,
-    args={}, 
+    args={},
 ):
     """
     Gets the path of the tensorboards and logs for a training session.
     Creates the folder and saves the arguments in a manager.
-    
+
     Args:
         args (dict, optional): Arguments of the session. Defaults to {}.
         path_dirs (str, optional): Parent of the directories. Defaults to all_paths['path_dirs'].
         path_to_manager (str, optional): Path to the manager of the directories. Defaults to all_paths['path_to_manager'].
-    
+
     Returns:
         str: path to the tensorboards and stuff.
     """
 
     now = datetime.now()
-    day, time = now.strftime("%d/%m/%Y %H:%M:%S").split(' ')
+    day, cur_time = now.strftime("%d/%m/%Y %H:%M:%S").split(' ')
 
     directories = [int(o) for o in os.listdir(path_dirs) if os.path.isdir(os.path.join(path_dirs, o)) and re.search(r'^\d+$', o)]
     # print(directories)
@@ -71,11 +69,11 @@ def get_save_path(
         manager = pd.DataFrame()
     else:
         manager = pd.read_pickle(os.path.join(path_to_manager, 'manager.pkl'))
-    
+
     manager = manager.append(pd.DataFrame.from_dict({
         'id': [id],
         'day': [day],
-        'time': [time],
+        'time': [cur_time],
         'path': [path],
         'args': [args],
     }))
@@ -89,5 +87,3 @@ def get_save_path(
 
 def min_max_norm(img):
     return (img - img.min())/(img.max() - img.min())
-
-

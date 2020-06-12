@@ -7,7 +7,7 @@ import pathlib
 
 
 
-def show_results(targets, imgs, outputs=None, **kwargs):    
+def show_results(targets, imgs, outputs=None, **kwargs):
 
     fig, axs = plt.subplots(imgs.shape[0], 2 + len(outputs), squeeze=False, **kwargs)
 
@@ -21,7 +21,7 @@ def show_results(targets, imgs, outputs=None, **kwargs):
             # axs[i, idx_output+2].imshow(apply_mask(imgs.cpu()[i][imgs.shape[1]//2], output.detach().cpu().argmax(1)[i]))
             plot_img_mask_on_ax(axs[i, idx_output+2], imgs.cpu()[i][imgs.shape[1]//2], output.detach().cpu().argmax(1)[i])
             axs[i, idx_output+2].set_title('Predicted mask')
-    
+
     return fig
 
 
@@ -40,4 +40,3 @@ def save_figs(figs, path, filename=''):
     for i, fig in enumerate(figs):
         fig.savefig(os.path.join(path, '{}--{}.png'.format(filename.split('--')[0], i + first)))
         print('saved in ', os.path.join(path, '{}--{}.png'.format(filename.split('--')[0], i + first)))
-

@@ -9,38 +9,47 @@ import torch.nn as nn
 
 import src.utils as u
 import src.models.resnet as resnet
+import src.models.vgg as vgg
 import src.metrics.metrics as m
-import src.data_manager.utils as du
 import src.callbacks.loggers.losses.base_loss as bl
 import src.callbacks.loggers.observables as o
 import src.callbacks.defreezer as df
+import src.callbacks.schedulers as s
+
+
 
 def main():
 
-    print('==================')
-    print('Creating model ...')
+    u.log_console('==================', logger=cfg.logger)
+    u.log_console('Creating model ...', logger=cfg.logger)
     start_model = time()
 
-    # cfg.threshold = .5 if cfg.MODEL_ARGS['do_activation'] else 0
+    cfg.threshold = .5 if cfg.MODEL_ARGS['do_activation'] else None
 
     if cfg.MODEL_NAME == 'resnet':
         model_init = resnet.ResNet_N
         freezer = df.FreezeFeaturesResNet
         layers = 'fc'
-    # if cfg.MODEL_NAME == 'vgg11':
-    #     model_init = vgg.VGG11
-    #     freezer = df.FreezeFeaturesVGG
-    #     layers = 'classifier'
+    if cfg.MODEL_NAME == 'vgg11':
+        model_init = vgg.VGG11
+        freezer = df.FreezeFeaturesVGG
+        layers = 'classifier'
 
+    cfg.MODEL_ARGS['n_classes'] = cfg.n_classes
+    cfg.MODEL_ARGS['in_channels'] = cfg.in_channels
     cfg.model = model_init(**cfg.MODEL_ARGS)
     cfg.model.to(cfg.device)
-    print('Number of parameters: ', u.get_nparams(cfg.model))
+    if not cfg.DEBUG:
+        with open(join(cfg.tensorboard_path, 'model.txt'), 'w') as f:
+            f.write(str(cfg.model))
+
+    u.log_console('Number of parameters: ', u.get_nparams(cfg.model), logger=cfg.logger)
     if cfg.res is not None:
         cfg.res['nparams'] = u.get_nparams(cfg.model, trainable=False)
         cfg.res['trainable_nparams'] = u.get_nparams(cfg.model, trainable=True)
-    
+
     if cfg.MODEL_ARGS['pretrained'] and cfg.args['FREEZE_FEATURES']:
-        cfg.defreezer = freezer(model=cfg.model)  
+        cfg.defreezer = freezer(model=cfg.model)
     else:
         cfg.defreezer = df.Defreezer()
 
@@ -51,56 +60,102 @@ def main():
         optimizer = optim.Adam
 
     cfg.optimizer = optimizer(cfg.model.parameters(), **cfg.args['OPTIMIZER']['args'])
+    if cfg.n_classes == 2:
+        def base_fn(metric):
+            return lambda *x: m.metric_binary_thresh(x[0], x[1], metric=metric, threshold=cfg.threshold)
+    else:
+        def base_fn(metric):
+            return lambda *x: m.metric_multiclass(x[0], x[1], metric=metric)
+
     cfg.metrics = {
-        'accuracy': lambda *x: m.metric_argmaxer(x[0], x[1], metric=m.accuracy, ), 
-        }
+        'accuracy': base_fn(metric=m.accuracy),
+        'f1score': base_fn(metric=m.f1score),
+        'mcc': base_fn(metric=m.matthewscc),
+    }
+    if cfg.n_classes >= 2:
+        if cfg.args['ALPHA'] != -1:
+            class_weights = torch.FloatTensor(
+                [cfg.args['ALPHA']] + [(1-cfg.args['ALPHA'])/(cfg.n_classes-1) for _ in range(cfg.n_classes-1)]
+            ).to(cfg.device)
 
-    cfg.criterion = nn.NLLLoss() if cfg.MODEL_ARGS['do_activation'] else nn.CrossEntropyLoss()
+            cfg.criterion = nn.NLLLoss(weight=class_weights) if cfg.MODEL_ARGS['do_activation'] else nn.CrossEntropyLoss(weight=class_weights)
+        else:
+            cfg.criterion = nn.NLLLoss(weight=class_weights) if cfg.MODEL_ARGS['do_activation'] else nn.CrossEntropyLoss()
 
+    elif cfg.n_classes == 1:
+        del cfg.args['ALPHA']
+        cfg.criterion = nn.BCELoss() if cfg.MODEL_ARGS['do_activation'] else nn.BCEWithLogitsLoss()
     cfg.loss = bl.BaseLoss(cfg.criterion)
-    
+
+    metrics_and_loss_obs = o.MetricsAndLoss(
+        model=cfg.model,
+        criterion=cfg.criterion,
+        metrics=cfg.metrics,
+        save_weights_path=cfg.output_obs_parent if not cfg.evaluate_mode else None,
+        to_save_on='loss',
+        use_recomputed_outputs=True,
+    )
+
+    cfg.scheduler = s.ReduceLROnPlateau(
+        loss_observable=metrics_and_loss_obs,
+        optimizer=cfg.optimizer,
+        **cfg.args['SCHEDULER_ARGS']
+    )
+
     cfg.observables = [
-        o.MetricsAndLoss(
-            model=cfg.model,
-            criterion=cfg.criterion,
-            metrics=cfg.metrics, 
-            save_weights_path=cfg.tensorboard_path if not cfg.evaluate_mode else None,
-            to_save_on='loss',
-            ),
+        metrics_and_loss_obs,
+        o.LRChecker(cfg.optimizer),
         o.MemoryChecker() if cfg.device == torch.device('cuda') else o.Observables(),
-        # o.ConfusionMatrix(
-        #     save_csv_path=join(cfg.tensorboard_path, 'confusion_matrix') if cfg.tensorboard_path is not None else None,
-        #     threshold=cfg.threshold,
-        # ),
+        o.ConfusionMatrix(
+            save_csv_path=join(cfg.output_obs_parent, 'confusion_matrix') if cfg.output_obs_parent is not None else None,
+            threshold=cfg.threshold,
+            metrics=cfg.metrics,
+            n_classes=cfg.n_classes,
+        ),
         o.Activations(show_train_batch=False,),
         o.CheckLayers(model=cfg.model, layers_set={'unfrozen': layers}),
-        # o.ShowImages(save_figure_path=cfg.tensorboard_path, period=100),
-        # o.GradientsLossInputs(background=-1, save_figure_path=cfg.tensorboard_path, period=10),
-        o.SaliencyMaps(
-            save_figure_path=cfg.tensorboard_path, 
-            periods={'train_on_batch': 1000, 'val_on_batch': 1, 'val_on_epoch': 5, 'train_on_epoch': 5,},
-            props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .005, 'train_on_epoch': .03},
-            do_tasks={
-                'train_on_batch': True, 
-                'val_on_batch': True if cfg.evaluate_mode else False, 
-                'train_on_epoch': False, 
-                'val_on_epoch': True
-                },
-            # threshold=cfg.threshold,
-        ),
-        o.GradCAM(
+        o.ShowImages(
             model=cfg.model,
-            batch_size=cfg.BATCH_SIZE,
-            save_figure_path=cfg.tensorboard_path,
-            periods={'train_on_batch': 1000, 'val_on_batch': 1, 'val_on_epoch': 3, 'train_on_epoch': 5,},
-            props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .005, 'train_on_epoch': .03},
+            save_figure_path=join(cfg.output_obs_parent, 'images') if cfg.output_obs_parent is not None else None,
+            periods={'train_batch': 100, 'val_batch': 100, 'val_epoch': cfg.args['EPOCHS'], 'train_epoch': cfg.args['EPOCHS']},
+            props={'train_batch': .1, 'val_batch': .05, 'val_epoch': .1, 'train_epoch': .05},
             do_tasks={
-                'train_on_batch': True, 
-                'val_on_batch': True if cfg.evaluate_mode else False, 
-                'train_on_epoch': False, 
-                'val_on_epoch': True
-                },
-        ),
+                'train_batch': False,
+                'val_batch': False,
+                'train_epoch': True,
+                'val_epoch': True,
+            },
+        ) if (not cfg.evaluate_mode) and cfg.args['SAVE_FIGURES'] else o.Observables(),
+        # o.GradientsLossInputs(background=-1, save_figure_path=cfg.output_obs_parent, period=10),
+        # o.SaliencyMaps(
+        #     save_figure_path=cfg.output_obs_parent,
+        #     periods={'train_on_batch': 100, 'val_on_batch': 1, 'val_on_epoch': 5, 'train_on_epoch': 5,},
+        #     props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .1, 'train_on_epoch': .03},
+        #     do_tasks={
+        #         'train_on_batch': True,
+        #         'val_on_batch': True if cfg.evaluate_mode else False,
+        #         'train_on_epoch': False,
+        #         'val_on_epoch': True
+        #         },
+        #     threshold=cfg.threshold,
+        #     background_to_hide=cfg.background,
+        # ),
+        # o.GradCAM(
+        #     model=cfg.model,
+        #     batch_size=cfg.BATCH_SIZE,
+        #     save_figure_path=cfg.output_obs_parent,
+        #     background_to_hide=cfg.background,
+        #     periods={'train_on_batch': 100, 'val_on_batch': 1, 'val_on_epoch': 3, 'train_on_epoch': 5,},
+        #     props={'train_on_batch': 1, 'val_on_batch': 1, 'val_on_epoch': .1, 'train_on_epoch': .03},
+        #     do_tasks={
+        #         'train_on_batch': True,
+        #         'val_on_batch': True if cfg.evaluate_mode else False,
+        #         'train_on_epoch': False,
+        #         'val_on_epoch': True
+        #         },
+        # ),
     ]
 
-    print('Model created in ', time() - start_model)
+
+
+    u.log_console('Model created in ', time() - start_model, logger=cfg.logger)

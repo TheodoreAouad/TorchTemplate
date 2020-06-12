@@ -23,7 +23,7 @@ MODEL_ARGS:
       # 'layers': [1, 1, 1],
       'planes': [64, 128, 256, 512],
       'in_channels': 1,
-      'num_classes': 10,
+      'n_classes': 10,
       'pretrained': False,
       'progress': True,
       'do_activation': False,

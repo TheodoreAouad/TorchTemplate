@@ -1,14 +1,16 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, ConcatDataset
+import pandas as pd
 import numpy as np
 
 
 
 class CustomDataset(Dataset):
 
-    def __init__(self,
+    def __init__(
+        self,
         data,
         transform_image=transforms.ToTensor(),
         tensor_type=torch.float32,
@@ -42,6 +44,19 @@ class CustomDataset(Dataset):
         image, target = image.type(self.tensor_type), torch.tensor([target]).type(self.target_type)
 
         return image, target
+
+
+class ConcatDataDataset(ConcatDataset):
+
+    def __init__(self, datasets):
+        super().__init__(datasets)
+        self.data = pd.concat([dataset.data for dataset in datasets]).reset_index(drop=True)
+
+
+    def __add__(self, other):
+        assert hasattr(other, 'data')
+        return ConcatDataDataset([self, other])
+
 
 
 MNIST = torchvision.datasets.MNIST

@@ -1,6 +1,7 @@
 import numpy as np
 from skimage.morphology import disk
 
+
 class Processor:
 
     def process_train(self, df, *args, **kwargs):
@@ -17,6 +18,7 @@ class Processor:
 
     def __repr__(self):
         return "{} {}".format(self.__class__.__name__, vars(self))
+
 
 class ProcessorRow(Processor):
 
@@ -38,21 +40,35 @@ class ProcessorRow(Processor):
         row = df.iloc[[idx]]
         return self.apply_to_df(row)
 
+
 class ProcessImage(ProcessorRow):
+
+    def __init__(self, channels=None):
+        self.channels = channels
 
     def apply_to_img(self, img, *args, **kwargs):
         if len(img.shape) == 2:
-            return self.apply_to_img2d(img, *args, **kwargs)
+            args_per_chan = kwargs.get('args_per_chan', [])
+            return self.apply_to_img2d(img, *args, *args_per_chan, **kwargs)
         elif len(img.shape) == 3:
+            args_per_chan = kwargs.get('args_per_chan', None)
             res = []
             for i in range(img.shape[-1]):
-                res.append(self.apply_to_img2d(img[..., i], *args, **kwargs))
+                if self.channels is not None and i not in self.channels:
+                    res.append(self.apply_to_img2d_not_in_channels(img[..., i], *args, **kwargs))
+                elif args_per_chan is not None:
+                    res.append(self.apply_to_img2d(img[..., i], *args, *args_per_chan[i], **kwargs))
+                else:
+                    res.append(self.apply_to_img2d(img[..., i], *args, **kwargs))
             return np.stack(res, -1)
 
     def apply_to_target(self, img, *args, **kwargs):
         return img
 
     def apply_to_img2d(self, img, *args, **kwargs):
+        return img
+
+    def apply_to_img2d_not_in_channels(self, img, *args, **kwargs):
         return img
 
     def apply_to_row(self, row_original):
@@ -80,7 +96,7 @@ class ComposeProcessors(Processor):
         for process in self.preprocesses:
             df_processed = process.train(df_processed, *args, **kwargs)
         return df_processed
-        
+
     def process_test(self, df, *args, **kwargs):
         df_processed = df.copy()
         for process in self.preprocesses:
@@ -136,7 +152,7 @@ class ComposeProcessColumn(ComposeProcessors):
 
 
 class ComposeProcessOutput(ComposeProcessors):
-    
+
     def __init__(self, processes):
         super().__init__(processes)
 
@@ -145,22 +161,24 @@ class ComposeProcessOutput(ComposeProcessors):
         for process in self.preprocesses:
             output = process.apply_to_output(img, output, *args, **kwargs)
         return output
-    
+
     def apply_to_volume(self, img_cube_ori, output_cube_ori, axis3d=0, *args, **kwargs):
         output_cube = output_cube_ori + 0
         for process in self.preprocesses:
             output_cube = process.apply_to_volume(img_cube_ori, output_cube, axis3d=axis3d, *args, **kwargs)
         return output_cube
-        
+
     def apply_to_row(self, row_original):
         row = row_original.copy()
         for process in self.preprocesses:
             row = process.apply_to_row(row)
         return row
-    
+
+
 class GlobalMorphProcess(ProcessImage):
 
-    def __init__(self, size_prop=.3, region_type='disk'):
+    def __init__(self, size_prop=.3, region_type='disk', channels=None):
+        super().__init__(channels)
         self.region_type = region_type
         self.size_prop = self._format_size_prop(size_prop)
 
@@ -177,16 +195,17 @@ class GlobalMorphProcess(ProcessImage):
             assert type(size_prop) == float, 'when disk is used, size must be float'
             size_prop = size_prop
         return size_prop
-        
+
 
     def apply_to_img2d(self, img, *args, **kwargs):
         if self.region_type == 'rectangle':
             region = np.ones(
-                (int(img.shape[0] * self.size_prop[0]) , int(img.shape[1] * self.size_prop[1]))
+                (int(img.shape[0] * self.size_prop[0]), int(img.shape[1] * self.size_prop[1]))
             )
         elif self.region_type == 'disk':
             region = disk(int(img.shape[0] * self.size_prop))
         return self.apply_morphology(img, region, *args, **kwargs)
+
 
     def apply_morphology(self, img, region, *args, **kwargs):
         return img

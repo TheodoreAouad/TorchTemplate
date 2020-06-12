@@ -2,31 +2,24 @@ import config as cfg
 
 from time import time
 from os.path import join
-import random
 
 from torch.utils.data import DataLoader
-import pandas as pd
 import numpy as np
 
-from all_paths import all_paths
 import src.utils as u
-import src.data_manager.get_data as gd
-import src.data_manager.dataloaders as dl
 import src.data_manager.datasets as ds
-import src.data_processing.processing as proc
-import src.data_processing.preprocessing as prep
 
 import load_preprocessing
+
 
 def main_train():
     load_data_train()
 
 
-
 def load_data_train():
     start = time()
-    print('==================')
-    print('Loading data ...')
+    u.log_console('==================', logger=cfg.logger)
+    u.log_console('Loading data ...', logger=cfg.logger)
 
     # Define datasets
     trainset = ds.MNIST('./data/MNIST', train=True, transform=None, target_transform=None, download=True)
@@ -34,12 +27,15 @@ def load_data_train():
     cfg.res['size_train_data'] = len(trainset)
     cfg.res['TRAIN_TEST_SPLIT'] = str(len(trainset) / (len(trainset) + len(testset)))
 
-    print('==================')
-    print('Preprocessing data ...')
+
+    u.log_console('Trainset: {}. Testset: {}.'.format(len(trainset), len(testset)), logger=cfg.logger)
+
+    u.log_console('==================', logger=cfg.logger)
+    u.log_console('Preprocessing data ...', logger=cfg.logger)
 
     load_preprocessing.load_preprocessing()
     cfg.res['preprocessing'] = [str(cfg.preprocessing)]
-    
+
 
     trainset.data = cfg.preprocessing.train(trainset.data)
     testset.data = cfg.preprocessing(testset.data)
@@ -51,9 +47,9 @@ def load_data_train():
         variance = trainset.data.pixel_array.apply(lambda x: np.ma.masked_where(x==-1, (x - cfg.mean_norm)**2).mean((0, 1))).mean()
         cfg.std_norm = np.sqrt(variance)
         cfg.mean_norm, cfg.std_norm = list(cfg.mean_norm), list(cfg.std_norm)
-    
-        print('Mean: {}, Std: {}'.format(cfg.mean_norm, cfg.std_norm))
-    
+
+        u.log_console('Mean: {}, Std: {}'.format(cfg.mean_norm, cfg.std_norm), logger=cfg.logger)
+
     load_preprocessing.load_transform_image()
     trainset.transform = cfg.transform_image_train
     testset.transform = cfg.transform_image_test
@@ -63,36 +59,24 @@ def load_data_train():
     cfg.trainloader_for_test = DataLoader(trainset, batch_size=cfg.BATCH_SIZE, shuffle=False)
     cfg.testloader = DataLoader(testset, batch_size=cfg.BATCH_SIZE, shuffle=False)
 
-    print("Dataset process time: ", time() - start)
+    u.log_console("Dataset process time: ", time() - start, logger=cfg.logger)
 
 
 def load_data_eval():
-    print('==================')
-    print('Loading data ...')
+    u.log_console('==================', logger=cfg.logger)
+    u.log_console('Loading data ...', logger=cfg.logger)
 
     start = time()
     # Define datasets
-    data = pd.read_csv(all_paths['rois_{}_dataset_csv'.format(cfg.args['ROI_CROP_TYPE'])])
-    
-
-    if cfg.cli_args.random_split:
-        all_patients = data.patient_id.unique()
-        random.shuffle(all_patients)
-        pivot_idx = int(cfg.TRAIN_TEST_SPLIT * len(all_patients))
-        test_patients = all_patients[pivot_idx:]
-    else:
-        patients_split = u.load_yaml(all_paths['train_test_split_yaml'])
-        test_patients = patients_split['EVAL']
 
 
-    test_data = data.loc[data.patient_id.isin(test_patients)]
-    print('{} patients and {} slices'.format(len(test_patients), len(test_data)))
+    testset = ds.MNIST('./data/MNIST', train=False, transform=None, target_transform=None, download=True)
+    u.log_console('Testset: {}.'.format(len(testset)), logger=cfg.logger)
 
     load_preprocessing.load_transform_image()
-    _, testset = get_train_test_datasets(test_data=test_data, transform_test=cfg.transform_image_test)
 
-    print('==================')
-    print('Preprocessing data ...')
+    u.log_console('==================', logger=cfg.logger)
+    u.log_console('Preprocessing data ...', logger=cfg.logger)
 
     cfg.preprocessing = u.load_pickle(join(cfg.cli_args.tensorboard_path, 'preprocessing.pkl'))
     # cfg.res['preprocessing'] = [str(cfg.preprocessing)]
@@ -101,10 +85,8 @@ def load_data_eval():
     testset.data = cfg.preprocessing(testset.data)
     cfg.testloader = DataLoader(testset, batch_size=cfg.BATCH_SIZE, shuffle=False)
 
-    print("Dataset process time: ", time() - start)
+    u.log_console("Dataset process time: ", time() - start, logger=cfg.logger)
 
 
 def main_eval():
     load_data_eval()
-
-

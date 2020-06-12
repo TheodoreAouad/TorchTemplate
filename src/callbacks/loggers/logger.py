@@ -1,5 +1,4 @@
 import pathlib
-import os
 from collections import defaultdict
 
 import torch
@@ -40,9 +39,10 @@ class Logger:
         self.output_dir_results = None
         self.output_dir_tensorboard = None
         self.do_tensorboard = True
+        self.logger = None
 
     def show(self):
-        print_nicely_on_console(self.logs)
+        self.print_nicely_on_console(self.logs)
 
     def set_number_of_epoch(self, number_of_epoch):
         self.number_of_epoch = number_of_epoch
@@ -83,7 +83,7 @@ class Logger:
             return
 
         iterator = self._get_keys(self.logs, keys=keys)
-        self.tensorboard_idx = {k:0 for k in iterator}
+        self.tensorboard_idx = {k: 0 for k in iterator}
         self.output_dir_tensorboard = pathlib.Path(path)
         self.output_dir_tensorboard.mkdir(parents=True, exist_ok=True)
         self.writer = {}
@@ -115,12 +115,12 @@ class Logger:
         for key in iterator:
             if self.logs[key] is not None:
                 if type(self.logs[key]) == torch.Tensor and self.logs[key].shape == torch.Size([]):
-                        self.writer[key].add_scalar(
-                            boards_names.get(key, key),
-                            self.logs[key],
-                            self.tensorboard_idx[key],
-                        )
-                        self.tensorboard_idx[key] += 1
+                    self.writer[key].add_scalar(
+                        boards_names.get(key, key),
+                        self.logs[key],
+                        self.tensorboard_idx[key],
+                    )
+                    self.tensorboard_idx[key] += 1
 
                 elif hasattr(self.logs[key], "__getitem__") and np.array(self.logs[key]).shape != ():
 
@@ -130,7 +130,7 @@ class Logger:
                         self.tensorboard_idx[key],
                     )
                     self.tensorboard_idx[key] += 1
-                    
+
                 else:
                     self.writer[key].add_scalar(
                         boards_names.get(key, key),
@@ -159,30 +159,50 @@ class Logger:
         pass
 
 
-def print_nicely_on_console(dic):
-    """
-    Prints nicely a dict on console.
-    Args:
-        dic (dict): the dictionary we want to print nicely on console.
-    """
-    to_print = ''
-    for key, value in zip(dic.keys(), dic.values()):
-        if type(value) == torch.Tensor:
-            value_to_print = value.cpu().detach().numpy()
-        else:
-            value_to_print = value
-
-        if value is not None:
-            if 'accuracy' in key:
-                value_to_print = str(round(100 * value_to_print, 2)) + ' %'
-            elif type(value_to_print) == np.ndarray:
-                if value_to_print.shape == ():
-                    value_to_print = "{:.2E}".format(value_to_print)
-                else:
-                    with np.nditer(value_to_print, op_flags=['readwrite']) as it:
-                        for x in it:
-                            x[...] = "{:.2E}".format(x)
+    def print_nicely_on_console(self, dic):
+        """
+        Prints nicely a dict on console.
+        Args:
+            dic (dict): the dictionary we want to print nicely on console.
+        """
+        to_print = ''
+        for key, value in zip(dic.keys(), dic.values()):
+            if type(value) == torch.Tensor:
+                value_to_print = value.cpu().detach().numpy()
             else:
-                value_to_print = "{:.2E}".format(value)
-            to_print += '{}: {}, '.format(key, value_to_print)
-    print(to_print)
+                value_to_print = value
+
+            if value is not None:
+                if 'accuracy' in key:
+                    value_to_print = str(round(100 * value_to_print, 2)) + ' %'
+                elif type(value_to_print) == np.ndarray:
+                    if value_to_print.shape == ():
+                        value_to_print = "{:.2E}".format(value_to_print)
+                    else:
+                        with np.nditer(value_to_print, op_flags=['readwrite']) as it:
+                            for x in it:
+                                x[...] = "{:.2E}".format(x)
+                else:
+                    value_to_print = "{:.2E}".format(value)
+                to_print += '{}: {}, '.format(key, value_to_print)
+        self.log_console(to_print)
+
+
+    def set_logger(self, logger):
+        self.logger = logger
+
+    def remove_logger(self):
+        self.logger = None
+
+    def log_console(self, to_print, *args, level='info', **kwargs):
+        log_console(to_print, *args, level=level, logger=self.logger, **kwargs)
+
+
+def log_console(to_print, *args, level='info', logger=None, **kwargs):
+    if logger is None:
+        print(to_print, *args, **kwargs)
+    else:
+        to_print = '{}'.format(to_print)
+        for st in args:
+            to_print = to_print + '{} '.format(st)
+        getattr(logger, level.lower())(to_print)

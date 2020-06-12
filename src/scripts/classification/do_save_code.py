@@ -6,8 +6,9 @@ from shutil import rmtree, copytree, ignore_patterns
 
 from all_paths import all_paths
 
+
 def save_in_temporary_file():
-    cfg.temporary_path = join(all_paths['tensorboard_classification'], 'temporary')
+    cfg.temporary_path = join(all_paths['tensorboard_binary_classification'], 'temporary')
     # Save code
     if exists(cfg.temporary_path):
         rmtree(cfg.temporary_path)
@@ -25,4 +26,3 @@ def save_in_final_file():
 
     dst = join(cfg.tensorboard_path, 'code')
     copytree(cfg.path_to_code, dst, ignore=ignore_patterns('*__pycache__*'))
-

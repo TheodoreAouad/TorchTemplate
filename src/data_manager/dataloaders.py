@@ -1,13 +1,13 @@
 import random
 
+
 class ComposeIterator:
 
     def __init__(self, iterators, shuffle=False):
-        
+
         self.iterators = iterators
         self.shuffle = shuffle
         self._length = sum([len(it) for it in iterators])
-
 
 
     def __iter__(self):
@@ -35,3 +35,16 @@ class ComposeIterator:
 
     def __getitem__(self, idx):
         return self.iterators[idx]
+
+
+class ComposeDataloaders(ComposeIterator):
+
+    def __init__(self, iterators, shuffle=False):
+        super().__init__(iterators, shuffle)
+
+        datasets = [it.dataset for it in iterators]
+        self.dataset = sum(datasets[1:], datasets[0])
+
+    @property
+    def batch_size(self):
+        return self.iterators[0].batch_size
