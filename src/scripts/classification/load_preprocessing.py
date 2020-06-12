@@ -12,13 +12,13 @@ import config as cfg
 
 def load_preprocessing(save=True):
 
-    cfg.preprocessing = proc.ComposeProcessColumn([
-        # prep.Resize(224, apply_to_target=False),
-        prep.MinMaxNorm(background=-1),
-    #     prep.LocalMedian(background=-1),
-    #     prep.EqualizeHist(background=-1),
-    ])
-    # cfg.preprocessing = proc.Processor()
+    # cfg.preprocessing = proc.ComposeProcessColumn([
+    #     # prep.Resize(224, apply_to_target=False),
+    #     prep.MinMaxNorm(background=-1),
+    # #     prep.LocalMedian(background=-1),
+    # #     prep.EqualizeHist(background=-1),
+    # ])
+    cfg.preprocessing = proc.Processor()
 
     if save and not cfg.DEBUG:
         u.save_pickle(
@@ -36,7 +36,7 @@ def load_transform_image(save=True):
         transforms.Normalize(
             mean=cfg.mean_norm,
             std=cfg.std_norm,
-        ) if cfg.args['NORMALIZE'] else lambda x: x,
+        ) if cfg.args['NORMALIZE'] else tprep.Identity(),
     ])
 
     cfg.transform_image_test = transforms.Compose([
@@ -45,7 +45,7 @@ def load_transform_image(save=True):
         transforms.Normalize(
             mean=cfg.mean_norm,
             std=cfg.std_norm,
-        ) if cfg.args['NORMALIZE'] else lambda x: x,
+        ) if cfg.args['NORMALIZE'] else tprep.Identity(),
 
     ])
 

@@ -2,6 +2,7 @@ import config as cfg
 
 from time import time
 from os.path import join
+import random
 
 from torch.utils.data import DataLoader
 import numpy as np
@@ -24,6 +25,9 @@ def load_data_train():
     # Define datasets
     trainset = ds.MNIST('./data/MNIST', train=True, transform=None, target_transform=None, download=True)
     testset = ds.MNIST('./data/MNIST', train=False, transform=None, target_transform=None, download=True)
+    val_idexs = random.sample(range(len(testset)), 1000)
+    testset.data = testset.data[val_idexs]
+    testset.targets = testset.targets[val_idexs]
     cfg.res['size_train_data'] = len(trainset)
     cfg.res['TRAIN_TEST_SPLIT'] = str(len(trainset) / (len(trainset) + len(testset)))
 

@@ -130,7 +130,7 @@ class ResNet_N(ResNet):
         self,
         in_channels=1,
         n_classes=1,
-        use_mask=True,
+        use_mask=False,
         bg_in=-1,
         bg_transit=0,
         pretrained=False,

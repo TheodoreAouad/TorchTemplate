@@ -73,17 +73,9 @@ def main():
         'mcc': base_fn(metric=m.matthewscc),
     }
     if cfg.n_classes >= 2:
-        if cfg.args['ALPHA'] != -1:
-            class_weights = torch.FloatTensor(
-                [cfg.args['ALPHA']] + [(1-cfg.args['ALPHA'])/(cfg.n_classes-1) for _ in range(cfg.n_classes-1)]
-            ).to(cfg.device)
-
-            cfg.criterion = nn.NLLLoss(weight=class_weights) if cfg.MODEL_ARGS['do_activation'] else nn.CrossEntropyLoss(weight=class_weights)
-        else:
-            cfg.criterion = nn.NLLLoss(weight=class_weights) if cfg.MODEL_ARGS['do_activation'] else nn.CrossEntropyLoss()
+        cfg.criterion = nn.NLLLoss() if cfg.MODEL_ARGS['do_activation'] else nn.CrossEntropyLoss()
 
     elif cfg.n_classes == 1:
-        del cfg.args['ALPHA']
         cfg.criterion = nn.BCELoss() if cfg.MODEL_ARGS['do_activation'] else nn.BCEWithLogitsLoss()
     cfg.loss = bl.BaseLoss(cfg.criterion)
 
@@ -96,11 +88,12 @@ def main():
         use_recomputed_outputs=True,
     )
 
-    cfg.scheduler = s.ReduceLROnPlateau(
-        loss_observable=metrics_and_loss_obs,
-        optimizer=cfg.optimizer,
-        **cfg.args['SCHEDULER_ARGS']
-    )
+    if cfg.args['UPDATE_LR']:
+        cfg.scheduler = s.ReduceLROnPlateau(
+            loss_observable=metrics_and_loss_obs,
+            optimizer=cfg.optimizer,
+            **cfg.args['SCHEDULER_ARGS']
+        )
 
     cfg.observables = [
         metrics_and_loss_obs,

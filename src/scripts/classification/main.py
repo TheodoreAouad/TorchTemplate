@@ -74,18 +74,8 @@ def main(args):
     cfg.MODEL_NAME = args['MODEL_NAME']
     cfg.MODEL_ARGS = args['MODEL_ARGS']
     # cfg.OPTIMIZER_ARGS = args['OPTIMIZER']['args']
-    cfg.PIXEL_SPACING = args['PIXEL_SPACING']
-    # cfg.n_classes = args['MODEL_ARGS']['num_classes']
-    cfg.n_classes = 2 if cfg.args['BINARY'] else 7
-    # cfg.in_channels = args['MODEL_ARGS']['in_channels']
-    cfg.in_channels = cfg.args['NB_T1S'] + cfg.args['NB_STIRS'] + int(cfg.args['MASK_DATA'])
-    cfg.target_feature = "{}_r{}".format(args['TARGET_FEATURE'], args['READER'])
-
-    if cfg.cli_args.only_true:
-        cfg.path_to_rois_ini = join(all_paths['rois_dataset'], 'only_true')
-    if cfg.args['NO_WINGS']:
-        cfg.cli_args.path_to_rois = join(cfg.path_to_rois_ini, 'no_wings')
-
+    cfg.n_classes = cfg.args['MODEL_ARGS']['n_classes']
+    cfg.in_channels = args['MODEL_ARGS']['in_channels']
 
     assert cfg.MODEL_NAME in POSSIBLE_MODELS, "Model Name not recognized: {}".format(cfg.MODEL_NAME)
     assert type(cfg.BATCH_SIZE) == int, "Batch size must be int"
@@ -93,11 +83,10 @@ def main(args):
 
     cfg.res = pd.DataFrame([args])
     cfg.res['tensorboard_path'] = cfg.tensorboard_path
-    cfg.res['no_wings'] = cfg.args['NO_WINGS']
     if not cfg.DEBUG:
         cfg.res.insert(0, 'tensorboard_nb', re.findall(r'/(\d+)/?$', cfg.tensorboard_path)[0])
 
-    cfg.background = cfg.MODEL_ARGS.get('bg_in', 0) if cfg.MODEL_ARGS['use_mask'] else 0
+    cfg.background = cfg.MODEL_ARGS.get('bg_in', 0) if cfg.MODEL_ARGS.get('use_mask', False) else 0
 
 
     now = datetime.now()
@@ -219,9 +208,8 @@ if __name__ == '__main__':
         format='%(message)s',
     )
 
-    cfg.path_to_rois_ini = cfg.cli_args.path_to_rois
     VERBOSE_TRAIN = cfg.cli_args.verbose
-    PATH_RESULTS = all_paths['results_binary_classification']
+    PATH_RESULTS = all_paths['results_classification']
 
     if not cfg.DEBUG:
         do_save_code.save_in_temporary_file()
@@ -237,10 +225,10 @@ if __name__ == '__main__':
     print(cfg.device)
 
     # load args
-    args_dict = u.load_yaml(all_paths['binary_classification_args'])
-    if not cfg.cli_args.random_split:
-        del args_dict['TRAIN_TEST_SPLIT']
-        args_dict['TRAIN_TEST_SPLIT_YAML'] = [all_paths['train_test_split_yaml_binary_classification']]
+    args_dict = u.load_yaml(all_paths['classification_args'])
+    # if not cfg.cli_args.random_split:
+    #     del args_dict['TRAIN_TEST_SPLIT']
+    #     args_dict['TRAIN_TEST_SPLIT_YAML'] = [all_paths['train_test_split_yaml_binary_classification']]
 
     args_list = u.dict_cross(args_dict)
 
@@ -259,8 +247,8 @@ if __name__ == '__main__':
         # Get tensorboard path to save results
         if not cfg.DEBUG:
             cfg.tensorboard_path = du.get_save_path(
-                path_dirs=all_paths['tensorboard_binary_classification'],
-                path_to_manager=all_paths['manager_binary_classification'],
+                path_dirs=all_paths['tensorboard_classification'],
+                path_to_manager=all_paths['manager_classification'],
                 args=args,
             )
 

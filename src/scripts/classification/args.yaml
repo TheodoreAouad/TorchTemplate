@@ -19,8 +19,8 @@ MODEL_NAME:
 MODEL_ARGS:
   [
     {
-      'layers': 'resnet18',
-      # 'layers': [1, 1, 1],
+      # 'layers': 'resnet18',
+      'layers': [1, 1],
       'planes': [64, 128, 256, 512],
       'in_channels': 1,
       'n_classes': 10,
@@ -33,18 +33,35 @@ MODEL_ARGS:
 # Model Training
 
 ID_TRIALS: ['']
+SAVE_FIGURES: [False]
+GRAD_IN_EVAL: [False]
 NORMALIZE: [False]
 DATA_AUGMENTATION: [False]
 FREEZE_FEATURES: [False]
-EPOCHS: [30]
-BATCH_SIZE: [30]
+EPOCHS: [10]
+BATCH_SIZE: [64]
 TRAIN_TEST_SPLIT: [.8]
+UPDATE_LR: [False]
+SCHEDULER_ARGS: [
+  {
+    'mode': 'min',
+    'factor': 0.3,
+    'patience': 5,
+    'verbose': True,
+    'threshold': 1e-4,
+    'threshold_mode': 'rel',
+    'cooldown': 0,
+    'min_lr': 0,
+    'eps': 1e-8,
+  }
+]
+
 OPTIMIZER:
   [
     {
       'name': 'adam',
       'args': {
-        'lr': 1e-2,
+        'lr': 1e-5,
         'betas': [0.9,0.999],
         'eps': 1e-08,
         'weight_decay': 1e-4

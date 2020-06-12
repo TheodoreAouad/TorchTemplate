@@ -26,6 +26,7 @@ OPTIMIZER_ARGS = None
 defreezer = None
 temporary_path = None
 logger = None
+scheduler = None
 
 mean_norm = None
 std_norm = None

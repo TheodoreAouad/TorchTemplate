@@ -8,7 +8,7 @@ from all_paths import all_paths
 
 
 def save_in_temporary_file():
-    cfg.temporary_path = join(all_paths['tensorboard_binary_classification'], 'temporary')
+    cfg.temporary_path = join(all_paths['tensorboard_classification'], 'temporary')
     # Save code
     if exists(cfg.temporary_path):
         rmtree(cfg.temporary_path)
