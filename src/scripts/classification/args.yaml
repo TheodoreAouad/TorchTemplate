@@ -5,6 +5,9 @@ SPECIFICITY:
 #### DATA ####
 ##############
 
+TRAIN_PROP: [.1]
+VAL_PROP: [.1]
+
 # Data Preprocessing
 
 
@@ -14,7 +17,10 @@ SPECIFICITY:
 
 # Model Creation
 MODEL_NAME:
-  ['resnet',]
+  [
+    'resnet',
+    # 'mlp'
+  ]
 
 MODEL_ARGS:
   [
@@ -28,6 +34,12 @@ MODEL_ARGS:
       'progress': True,
       'do_activation': False,
     },
+    # {
+    #   'layers': [100, 100, 10],
+    #   'do_activation': False,
+    #   'n_classes': 10,
+    #   'in_channels': 1,
+    # }
   ]
 
 # Model Training

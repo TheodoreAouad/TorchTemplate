@@ -13,8 +13,8 @@ import config as cfg
 def load_preprocessing(save=True):
 
     # cfg.preprocessing = proc.ComposeProcessColumn([
-    #     # prep.Resize(224, apply_to_target=False),
-    #     prep.MinMaxNorm(background=-1),
+    #     prep.Resize(224, do_target=False),
+    #     # prep.MinMaxNorm(background=-1),
     # #     prep.LocalMedian(background=-1),
     # #     prep.EqualizeHist(background=-1),
     # ])
@@ -30,6 +30,7 @@ def load_transform_image(save=True):
         # tprep.ToUint8(),
         # transforms.ToPILImage(),
         # transforms.RandomRotation(degrees=4) if cfg.args['DATA_AUGMENTATION'] else lambda x: x,
+        transforms.Resize(224),
         transforms.ToTensor(),
         tprep.ToDevice(cfg.device),
         tprep.MaskedMinMaxNorm(background_prev=0, background_next=cfg.background),
@@ -40,6 +41,7 @@ def load_transform_image(save=True):
     ])
 
     cfg.transform_image_test = transforms.Compose([
+        transforms.Resize(224),
         transforms.ToTensor(),
         tprep.MaskedMinMaxNorm(background_prev=0, background_next=cfg.background),
         transforms.Normalize(

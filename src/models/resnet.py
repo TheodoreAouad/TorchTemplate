@@ -115,6 +115,32 @@ class ResNet(resnet.ResNet):
         x = self.fc(x)
         return x
 
+
+    def forward_show_shapes(self, x):
+        x = self.conv1(x)
+        print(x.shape)
+        x = self.bn1(x)
+        print(x.shape)
+        x = self.relu(x)
+        print(x.shape)
+        x = self.maxpool(x)
+        print(x.shape)
+
+        for i in range(len(self.layers)):
+            x = getattr(self, 'layer{}'.format(i+1))(x)
+            print(x.shape)
+
+
+        x = self.avgpool(x)
+        print(x.shape)
+        # x = torch.flatten(x, 1)
+        print(x.shape)
+        x = self.flatten(x)
+        print(x.shape)
+        x = self.fc(x)
+        print(x.shape)
+        return x
+
     @property
     def device(self):
         for p in self.parameters():
@@ -187,6 +213,7 @@ class ResNet_N(ResNet):
         if act:
             return self.final_activation(x)
         return x
+
 
     def _replace_layers(self, bg_transit, transform_conv=True, transform_bn=True, transform_relu=True):
         for name, layer in self.named_modules():

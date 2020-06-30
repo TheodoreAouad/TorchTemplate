@@ -137,8 +137,6 @@ class Resize(ProcessImage):
         """
         if self.do_target:
             return cv2.resize(target, tuple(list(self.size)[::-1]), interpolation=self.interpolation_target)
-        else:
-            pass
 
     def apply_to_row(self, row_original):
         row = row_original.copy()

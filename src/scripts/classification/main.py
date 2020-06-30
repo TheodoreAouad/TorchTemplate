@@ -60,6 +60,7 @@ import load_model
 POSSIBLE_MODELS = [
     'resnet',
     'vgg11',
+    'mlp',
 ]
 
 

@@ -1,3 +1,4 @@
+import pandas as pd
 import numpy as np
 from skimage.morphology import disk
 
@@ -36,8 +37,7 @@ class ProcessorRow(Processor):
 
 
     def apply_to_line(self, df_original, idx):
-        df = df_original.copy()
-        row = df.iloc[[idx]]
+        row = df_original.iloc[[idx]]
         return self.apply_to_df(row)
 
 
@@ -92,15 +92,13 @@ class ComposeProcessors(Processor):
         self.preprocesses = preprocesses
 
     def process_train(self, df, *args, **kwargs):
-        df_processed = df.copy()
         for process in self.preprocesses:
-            df_processed = process.train(df_processed, *args, **kwargs)
+            df_processed = process.train(df, *args, **kwargs)
         return df_processed
 
     def process_test(self, df, *args, **kwargs):
-        df_processed = df.copy()
         for process in self.preprocesses:
-            df_processed = process(df_processed, *args, **kwargs)
+            df_processed = process(df, *args, **kwargs)
         return df_processed
 
     def __repr__(self):
@@ -146,9 +144,18 @@ class ComposeProcessColumn(ComposeProcessors):
         return res
 
     def apply_to_line(self, df_original, idx):
-        df = df_original.copy()
-        row = df.iloc[[idx]]
+        row = df_original.iloc[[idx]]
         return self.apply_to_df(row)
+
+    def process_train(self, df, *args, **kwargs):
+        for process in self.preprocesses:
+            df_processed = process.train(df, *args, **kwargs)
+        return df_processed
+
+    def process_test(self, df, *args, **kwargs):
+        for process in self.preprocesses:
+            df_processed = process(df, *args, **kwargs)
+        return df_processed
 
 
 class ComposeProcessOutput(ComposeProcessors):
@@ -169,9 +176,8 @@ class ComposeProcessOutput(ComposeProcessors):
         return output_cube
 
     def apply_to_row(self, row_original):
-        row = row_original.copy()
         for process in self.preprocesses:
-            row = process.apply_to_row(row)
+            row = process.apply_to_row(row_original)
         return row
 
 

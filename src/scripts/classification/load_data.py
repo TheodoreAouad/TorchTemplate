@@ -25,9 +25,17 @@ def load_data_train():
     # Define datasets
     trainset = ds.MNIST('./data/MNIST', train=True, transform=None, target_transform=None, download=True)
     testset = ds.MNIST('./data/MNIST', train=False, transform=None, target_transform=None, download=True)
-    val_idexs = random.sample(range(len(testset)), 1000)
+
+    train_idexs = random.sample(range(len(trainset)), int(cfg.args['TRAIN_PROP'] * len(trainset)))
+    trainset.data = trainset.data[train_idexs]
+    trainset.targets = trainset.targets[train_idexs]
+
+
+    val_idexs = random.sample(range(len(testset)), int(cfg.args['VAL_PROP'] * len(testset)))
+
     testset.data = testset.data[val_idexs]
     testset.targets = testset.targets[val_idexs]
+
     cfg.res['size_train_data'] = len(trainset)
     cfg.res['TRAIN_TEST_SPLIT'] = str(len(trainset) / (len(trainset) + len(testset)))
 

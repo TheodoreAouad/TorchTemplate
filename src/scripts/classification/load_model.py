@@ -10,6 +10,7 @@ import torch.nn as nn
 import src.utils as u
 import src.models.resnet as resnet
 import src.models.vgg as vgg
+import src.models.mlp as mlp
 import src.metrics.metrics as m
 import src.callbacks.loggers.losses.base_loss as bl
 import src.callbacks.loggers.observables as o
@@ -30,13 +31,19 @@ def main():
         model_init = resnet.ResNet_N
         freezer = df.FreezeFeaturesResNet
         layers = 'fc'
+        cfg.MODEL_ARGS['n_classes'] = cfg.n_classes
+        cfg.MODEL_ARGS['in_channels'] = cfg.in_channels
+
     if cfg.MODEL_NAME == 'vgg11':
         model_init = vgg.VGG11
         freezer = df.FreezeFeaturesVGG
         layers = 'classifier'
+        cfg.MODEL_ARGS['n_classes'] = cfg.n_classes
+        cfg.MODEL_ARGS['in_channels'] = cfg.in_channels
 
-    cfg.MODEL_ARGS['n_classes'] = cfg.n_classes
-    cfg.MODEL_ARGS['in_channels'] = cfg.in_channels
+    if cfg.MODEL_NAME == 'mlp':
+        model_init = mlp.MLP
+
     cfg.model = model_init(**cfg.MODEL_ARGS)
     cfg.model.to(cfg.device)
     if not cfg.DEBUG:
